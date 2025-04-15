@@ -1,0 +1,20 @@
+{
+    "location": {
+        "Description": "File with the validation issue."
+    },
+    "code": {
+        "Description": "Code of the validation issue."
+    },
+    "issueMessage": {
+        "Description": "Validation issue message."
+    },
+    "subCode": {
+        "Description": "Subcode providing additional issue details."
+    },
+    "severity": {
+        "Description": "Severity of the issue (e.g., warning, error)."
+    },
+    "rule": {
+        "Description": "Validation rule that triggered the issue."
+    }
+}

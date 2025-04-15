@@ -1,0 +1,7 @@
+log file
+
+march 13th. dropped scans in sub-41635233/ses-1/dwi/ because faulty conversion from dicom to nifti
+
+scans from batch_1 who had 'rfMRI' in their acq- block, had the string replaced with 'EPI', to match other scan names with the same acq protocol
+
+The version of bids schema used for validation doesn't not include ADC as a suffix within the dwi modality, so it raises an error saying those scans are not recognized

@@ -1,0 +1,92 @@
+{
+    "EchoTime": {
+        "Description": "Scanning Parameter"
+    },
+    "EffectiveEchoSpacing": {
+        "Description": "Scanning Parameter"
+    },
+    "FlipAngle": {
+        "Description": "Scanning Parameter"
+    },
+    "MultibandAccelerationFactor": {
+        "Description": "Scanning Parameter"
+    },
+    "ParallelAcquisitionTechnique": {
+        "Description": "Scanning Parameter"
+    },
+    "ParallelReductionFactorInPlane": {
+        "Description": "Scanning Parameter"
+    },
+    "PartialFourier": {
+        "Description": "Scanning Parameter"
+    },
+    "PhaseEncodingDirection": {
+        "Description": "Scanning Parameter"
+    },
+    "RepetitionTime": {
+        "Description": "Scanning Parameter"
+    },
+    "SliceEncodingDirection": {
+        "Description": "Scanning Parameter"
+    },
+    "TotalReadoutTime": {
+        "Description": "Scanning Parameter"
+    },
+    "Dim1Size": {
+        "Description": "Scanning Parameter"
+    },
+    "Dim2Size": {
+        "Description": "Scanning Parameter"
+    },
+    "Dim3Size": {
+        "Description": "Scanning Parameter"
+    },
+    "NSliceTimes": {
+        "Description": "Scanning Parameter"
+    },
+    "NumVolumes": {
+        "Description": "Scanning Parameter"
+    },
+    "Obliquity": {
+        "Description": "Scanning Parameter"
+    },
+    "VoxelSizeDim1": {
+        "Description": "Scanning Parameter"
+    },
+    "VoxelSizeDim2": {
+        "Description": "Scanning Parameter"
+    },
+    "VoxelSizeDim3": {
+        "Description": "Scanning Parameter"
+    },
+    "ManualCheck": {
+        "Description": "Column where users mark groups to manually check"
+    },
+    "Notes": {
+        "Description": "Column to mark notes about the param group"
+    },
+    "RenameEntitySet": {
+        "Description": "Auto-generated suggested rename of Non-Domiannt Groups based on variant scanning parameters"
+    },
+    "Counts": {
+        "Description": "Number of Files in the Parameter Group"
+    },
+    "Modality": {
+        "Description": "MRI image type"
+    },
+    "MergeInto": {
+        "Description": "Column to mark groups to remove with a '0'"
+    },
+    "EntitySetCount": {
+        "Description": "Number of participants in a Entity Set"
+    },
+    "EntitySet": {
+        "Description": "A set of scans whose filenames share all BIDS filename key-value pairs, excluding subject and session"
+    },
+    "ParamGroup": {
+        "Description": "The set of scans with identical metadata parameters in their sidecars (defined within a Entity Set and denoted numerically)"
+    },
+    "KeyParamGroup": {
+        "Description": "Entity Set name and Param Group number separated by a double underscore"
+    }
+}

@@ -1,0 +1,8 @@
+{
+    "subject": {
+        "Description": "Participant ID"
+    },
+    "AcqGroup": {
+        "Description": "Acquisition Group. See Read the Docs for more information https://cubids.readthedocs.io/en/latest/about.html#definitions"
+    }
+}

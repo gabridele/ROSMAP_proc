@@ -1,0 +1,57 @@
+{
+  "descriptions": [
+    {
+      "datatype": "anat",
+      "suffix": "T1w",
+      "criteria": {
+        "SeriesDescription": "t1"
+      },
+      "sidecar_changes": {
+        "ProtocolName": "t1"
+      }
+    },
+    {
+      "id": "task_rest",
+      "datatype": "func",
+      "suffix": "bold",
+      "custom_entities": "task-rest",
+      "criteria": {
+        "SeriesDescription": "*RS_fMRI*",
+        "EchoTime": 0.03
+      }
+    },
+    {
+      "datatype": "fmap",
+      "suffix": "fmap",
+      "criteria": {
+        "ProtocolName": "*field_mapping*"
+      },
+      "sidecar_changes": {
+        "IntendedFor": "task_rest"
+      }
+    },
+    {
+      "id": "id_task_learning",
+      "datatype": "func",
+      "suffix": "bold",
+      "custom_entities": "task-learning",
+      "criteria": {
+        "SeriesDescription": "bold_task-learning"
+      },
+      "sidecar_changes": {
+        "TaskName": "learning"
+      }
+    },
+    {
+      "datatype": "fmap",
+      "suffix": "epi",
+      "criteria": {
+        "SeriesDescription": "fmap_task-learning"
+      },
+      "sidecar_changes": {
+        "TaskName": "learning",
+        "IntendedFor": "id_task_learning"
+      }
+    }
+  ]
+}
