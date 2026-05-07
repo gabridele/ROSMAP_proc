@@ -227,6 +227,15 @@ p_pre <- plot_fd_effects(
 
 print(p_pre)
 
+# save plot
+ggsave(
+  "fd_effects_withinconn_bl.png",
+  plot = p_pre,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
+
 # ============================================================
 # 4. Post-filtering analysis: mean_FD < 0.25
 # ============================================================
@@ -251,3 +260,11 @@ p_post <- plot_fd_effects(
 
 print(p_post)
 
+# save plot
+ggsave(
+  "fd_effects_withinconn_bl_postFDfilter.png",
+  plot = p_post,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
