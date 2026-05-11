@@ -270,6 +270,8 @@ ggsave(
 
 ######
 # misc
+# fixed-effect model matrix is rank deficient so dropping 2 columns / coefficients
+
 data_long_post %>%
   summarise(
     msex = n_distinct(msex),

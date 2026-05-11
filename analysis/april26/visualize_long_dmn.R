@@ -11,8 +11,6 @@ library(lmerTest)
 
 demos_withinconn <- read.csv("demos_withinconn.csv")
 
-demos_withinconn <- read.csv("demos_withinconn.csv")
-
 demos_withinconn <- demos_withinconn %>%
   mutate(
     ses_num = as.numeric(str_extract(ses, "\\d+"))
@@ -64,7 +62,7 @@ df_segments <- df_one_net %>%
   filter(!is.na(x_end)) %>%
   ungroup()
 
-ggplot() +
+pre_fd <- ggplot() +
   geom_segment(
     data = df_segments,
     aes(
@@ -97,16 +95,14 @@ ggplot() +
     color = "Step direction"
   )
 
-ggplot(df_one_net, aes(x = ses_num, y = within_conn)) +
-  geom_line(aes(group = sub), alpha = 0.25) +
-  geom_point(alpha = 0.5, size = 1.5) +
-  scale_x_continuous(breaks = sort(unique(df_one_net$ses_num))) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = paste(network_to_plot, "connectivity across sessions"),
-    x = "Session number",
-    y = "DMN"
-  )
+#save
+ggsave(
+  "dmn_withinconn_longitudinal_preFD.png",
+  plot = pre_fd,
+  width = 12,
+  height = 8,
+  dpi = 300
+)
 
 # -------
 ## split into 4 groups for better visualization
@@ -121,7 +117,7 @@ df_one_net <- df_one_net %>%
 df_segments <- df_segments %>%
   left_join(sub_groups, by = "sub")
 
-ggplot() +
+pre_fd_split <- ggplot() +
   geom_segment(
     data = df_segments,
     aes(
@@ -157,6 +153,14 @@ ggplot() +
     y = "DMN",
     color = "Step direction"
   )
+
+#save
+ggsave(
+  "dmn_withinconn_longitudinal_preFD_split.png",
+  plot = pre_fd_split,
+  width = 12,
+  height = 8,
+  dpi = 300)
 
 ####### =======================================================
 # same but after filtering for mean_FD < 0.25
