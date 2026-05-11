@@ -284,7 +284,7 @@ fit_model_pairwise <- function(data_long, covariate) {
     emm <- emmeans(
       model,
       specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "none"
+      adjust = "tukey"
     )
     
     # Extract only the contrast table.
@@ -478,7 +478,7 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title)
     ) +
     labs(
       title = title,
-      subtitle = "Stars show uncorrected model-based pairwise comparisons from emmeans",
+      subtitle = "Stars show HSD-corrected model-based pairwise comparisons from emmeans",
       x = covariate,
       y = "Within-network connectivity"
     )
