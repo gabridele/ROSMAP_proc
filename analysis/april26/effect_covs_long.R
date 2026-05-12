@@ -4,9 +4,10 @@ library(readr)
 library(stringr)
 library(tidyr)
 library(purrr)
-library(emmeans)
-library(ggpubr)
-
+library(ggeffects)
+library(lme4)
+library(lmerTest)
+emm_options(pbkrtest.limit = 10000)
 # ============================================================
 # 1. Load and prepare data
 # ============================================================
@@ -26,31 +27,6 @@ library(ggpubr)
 #   adjusted models using emmeans.
 
 demos_withinconn <- read.csv("demos_withinconn.csv")
-# filter df by BNK site and makee neew df containing only code and site cols
-#bnks <- demos_withinconn %>%
-#  filter(site == "BNK") %>%
-#  select(sub_ses, site)
-#write_csv(bnks, "BNK_sub_ses.csv")
-##
-# ------------------------------------------------------------
-# Keep only the lowest/earliest session per subject
-# ------------------------------------------------------------
-# ses_id is assumed to look like "ses-1", "ses-2", etc.
-# We extract the numeric session value so ordering is numeric,
-# not alphabetical.
-#
-# Example:
-#   "ses-10" should come after "ses-2"
-#   numeric extraction makes this behave correctly.
-
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
-  ) %>%
-  group_by(sub_id) %>%
-  arrange(ses_num) %>%
-  slice(1) %>%
-  ungroup()
 
 # Basic missingness check.
 # This prints the number of missing values per column.
@@ -122,7 +98,7 @@ covariates_to_run <- c(
 
 model_formula <- as.formula(
   paste(
-    "within_conn ~ mean_FD + msex + site + age_scandate + eyes"
+    "within_conn ~ mean_FD + msex + site + age_scandate + eyes + (1 | sub)"
   )
 )
 
@@ -233,7 +209,7 @@ fit_model_pairwise <- function(data_long, covariate) {
       droplevels()
     
     # Fit the adjusted model for this network.
-    model <- lm(
+    model <- lmer(
       model_formula,
       data = df_net
     )
@@ -524,7 +500,7 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
     data_long = data_long,
     covariate = covariate,
     pairwise_results = pairwise_results,
-    title = paste0(analysis_label, ": raw distribution by ", covariate, " at baseline")
+    title = paste0(analysis_label, ": raw distribution by ", covariate, ", longitudinal (1 | subject)")
   )
   
   print(p)

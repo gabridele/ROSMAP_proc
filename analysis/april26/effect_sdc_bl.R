@@ -26,11 +26,10 @@ library(ggpubr)
 #   adjusted models using emmeans.
 
 demos_withinconn <- read.csv("demos_withinconn.csv")
-# filter df by BNK site and makee neew df containing only code and site cols
-#bnks <- demos_withinconn %>%
-#  filter(site == "BNK") %>%
-#  select(sub_ses, site)
-#write_csv(bnks, "BNK_sub_ses.csv")
+
+# filter out BNK and RIRC sites
+#demos_withinconn <- demos_withinconn %>%
+#  filter(!site %in% c("BNK", "RIRC"))
 ##
 # ------------------------------------------------------------
 # Keep only the lowest/earliest session per subject
@@ -96,10 +95,51 @@ network_colors <- c(
 # Categorical covariates to test and plot.
 # Each of these will be analyzed with emmeans pairwise comparisons.
 covariates_to_run <- c(
-  "msex",
-  "site",
-  "eyes"
+  "distortion_correction"
 )
+
+# ------------------------------------------------------------
+# Optional: create yes/no dummy columns from distortion_correction
+# ------------------------------------------------------------
+# This turns each distortion_correction level into a separate
+# column with values "yes" or "no".
+#
+# Example:
+#   distortion_correction = "omni"
+# becomes:
+#   distortion_omni = "yes"
+#   distortion_phasediff = "no"
+#   distortion_SyN = "no"
+#
+# These dummy columns are currently not included in model_formula below,
+# but this section prepares them if you want to add selected ones later.
+
+#distortion_levels <- levels(factor(demos_withinconn$distortion_correction))
+#
+#for (lev in distortion_levels) {
+#  new_col <- paste0("distortion_", make.names(lev))
+#  
+#  demos_withinconn[[new_col]] <- ifelse(
+#    demos_withinconn$distortion_correction == lev,
+#    "yes",
+#    "no"
+#  )
+#}
+#
+## Identify all distortion dummy columns.
+#distortion_dummy_cols <- grep(
+#  "^distortion_",
+#  names(demos_withinconn),
+#  value = TRUE
+#)
+#
+## Drop distortion dummy columns that are site-related or not intended
+## for modeling. Adjust this pattern if your column names differ.
+#distortion_dummy_cols <- distortion_dummy_cols[
+#  !str_detect(distortion_dummy_cols, "none|TOPUP|correction")
+#]
+#
+#print(distortion_dummy_cols)
 
 # ------------------------------------------------------------
 # Adjusted model formula
@@ -122,9 +162,8 @@ covariates_to_run <- c(
 
 model_formula <- as.formula(
   paste(
-    "within_conn ~ mean_FD + msex + site + age_scandate + eyes"
-  )
-)
+    "within_conn ~ mean_FD + msex + age_scandate + eyes + distortion_correction"
+))
 
 # ============================================================
 # 2. Helper functions
@@ -301,13 +340,20 @@ fit_model_pairwise <- function(data_long, covariate) {
 #'
 #' Note:
 #'   Stars are based on raw p-values because no correction is applied.
-make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
+make_pairwise_brackets <- function(
+    data_long,
+    pairwise_results,
+    covariate,
+    p_cutoff = 0.05,
+    base_pad = 0.06,
+    step_size = 0.07
+) {
   
-  # Actual x-axis factor levels in the plotted data.
+  # Actual x-axis factor levels in the plotted data
   x_levels <- levels(factor(data_long[[covariate]]))
   
   # Compute y-axis bounds per network.
-  # These are used to place significance brackets.
+  # These are used to place significance brackets separately for each facet.
   y_positions <- data_long %>%
     group_by(network) %>%
     summarise(
@@ -321,7 +367,7 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
     )
   
   pairwise_results %>%
-    filter(p_raw < 0.05) %>%
+    filter(p_raw < p_cutoff) %>%
     separate(
       contrast,
       into = c("group1", "group2"),
@@ -332,7 +378,7 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
       # Fix cases like:
       #   msex0 -> 0
       #   msex1 -> 1
-      # This prevents ggplot from creating extra x-axis categories.
+      # so ggplot does not create extra x-axis categories.
       group1_clean = str_remove(group1, paste0("^", covariate)),
       group2_clean = str_remove(group2, paste0("^", covariate)),
       
@@ -346,17 +392,24 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
     mutate(
       bracket_number = row_number(),
       
-      # Alternate bracket placement:
-      # first significant comparison goes above,
-      # second below,
-      # third above, etc.
+      # Alternate above/below to reduce clutter
       bracket_side = ifelse(bracket_number %% 2 == 1, "above", "below"),
-      bracket_rank = ceiling(bracket_number / 2),
       
-      y.position = ifelse(
-        bracket_side == "above",
-        y_max + bracket_rank * 0.08 * y_range,
-        y_min - bracket_rank * 0.08 * y_range
+      # Rank brackets separately within above and below groups.
+      # This spaces above-brackets from each other, and below-brackets
+      # from each other, instead of using one shared rank.
+      bracket_rank = ave(
+        bracket_number,
+        bracket_side,
+        FUN = seq_along
+      ),
+      
+      y.position = case_when(
+        bracket_side == "above" ~
+          y_max + (base_pad + (bracket_rank - 1) * step_size) * y_range,
+        
+        bracket_side == "below" ~
+          y_min - (base_pad + (bracket_rank - 1) * step_size) * y_range
       ),
       
       label = sig
@@ -393,7 +446,9 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title)
   pairwise_annot <- make_pairwise_brackets(
     data_long = data_long,
     pairwise_results = pairwise_results,
-    covariate = covariate
+    covariate = covariate,
+    base_pad = 0.05,
+    step_size = 0.2
   )
   
   p <- ggplot(
@@ -426,7 +481,9 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title)
     scale_color_manual(values = network_colors) +
     scale_fill_manual(values = network_colors) +
     scale_y_continuous(
-      expand = expansion(mult = c(0.18, 0.18))
+      limit = c(-1, 1.7),
+      expand = expansion(mult = c(0.18, 0.18)),
+      breaks = seq(-0.5, 1.5, by = 0.5)
     ) +
     theme_minimal(base_size = 13) +
     theme(
@@ -612,34 +669,25 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 
-
-
 #data_long_pre <- make_long(demos_withinconn)
-
 #df_net <- data_long_pre %>%
 #      filter(network == "Vis")
-
-
-
 #model_formula <- as.formula(
 #  paste(
-#    "within_conn ~ mean_FD + msex + site + age_scandate + eyes"
+#    "within_conn ~ mean_FD + msex + site + age_scandate + eyes + ", paste(distortion_dummy_cols, collapse = " + ")
 #  )
 #)
 #model <- lm(
 #      model_formula,
 #      data = df_net
 #    )   
+#summary(model)
 #emm <- emmeans(
 #      model,
-#      specs = pairwise ~ eyes
+#      specs = pairwise ~ distortion_omni
 #    )
-
 #print(emm)
-
 # emm$emmeans: adjusted means per site
-
 # This gives the model-adjusted estimated mean connectivity for each site.
-
 # emm$contrasts: pairwise comparisons between sites, with estimates, SE, t/z ratios, and p-values.
 
