@@ -9,14 +9,46 @@ library(lme4)
 library(lmerTest)
 library(lubridate)
 
+# ===============================================================
+# plotting raw data with lines connecting each subject's sessions
+# ===============================================================
 
-demos_withinconn <- read.csv("demos_withinconn.csv")
+demos_withinconn <- read.csv("demos_withinconn.csv") %>%
+  mutate(
+    ses_num = as.numeric(str_extract(ses, "\\d+")),
+    sub = factor(sub),
+    mean_FD = as.numeric(mean_FD),
+    msex = factor(msex),
+    site = factor(site),
+    age_scandate = as.numeric(age_scandate),
+    distortion_correction = factor(distortion_correction),
+    eyes = factor(eyes)
+  )
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
     ses_num = as.numeric(str_extract(ses, "\\d+"))
   ) %>%
   mutate(sub = factor(sub))
+
+## add scandate
+demos_withinconn <- read_csv("age_atscan.csv") %>%
+  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
+  select(c("ses_id", "sub_id", "scandate")) %>%
+  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
+
+# make scandate format yyyymmdd into a datee
+demos_withinconn <- demos_withinconn %>%
+  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
+
+# compute years from baseline for each subject
+demos_withinconn <- demos_withinconn %>%
+  group_by(sub_id) %>%
+  mutate(
+    baseline_date = scandate[which.min(ses_num)],
+    years_from_baseline = interval(baseline_date, scandate) / years(1)
+  ) %>%
+  ungroup()
 
 make_long <- function(data) {
   data %>%
@@ -47,11 +79,11 @@ df_one_net <- data_long %>%
 # ============================================================
 
 df_segments <- df_one_net %>%
-  arrange(sub, ses_num) %>%
+  arrange(sub, years_from_baseline) %>%
   group_by(sub) %>%
   mutate(
-    x_start = ses_num,
-    x_end = lead(ses_num),
+    x_start = years_from_baseline,
+    x_end = lead(years_from_baseline),
     y_start = within_conn,
     y_end = lead(within_conn),
     direction = case_when(
@@ -76,26 +108,20 @@ pre_fd <- ggplot() +
     alpha = 0.6,
     linewidth = 0.6
   ) +
-  geom_point(
-    data = df_one_net,
-    aes(x = ses_num, y = within_conn),
-    alpha = 0.5,
-    size = 1.5
-  ) +
   scale_color_manual(values = c(
     "up" = "#2C7BB6",
     "down" = "#D7191C",
     "flat" = "grey50"
   )) +
-  scale_x_continuous(breaks = sort(unique(df_one_net$ses_num))) +
+  scale_x_continuous(breaks = sort(unique(df_one_net$years_from_baseline))) +
   theme_minimal(base_size = 13) +
   labs(
     title = paste(network_to_plot, "connectivity across sessions"),
-    x = "Session number",
+    x = "Years from baseline",
     y = "DMN",
     color = "Step direction"
   )
-
+print(pre_fd)
 #save
 ggsave(
   "dmn_withinconn_longitudinal_preFD.png",
@@ -132,13 +158,6 @@ pre_fd_split <- ggplot() +
     linewidth = 0.6
   ) +
   
-  geom_point(
-    data = df_one_net,
-    aes(x = ses_num, y = within_conn),
-    alpha = 0.5,
-    size = 1.5
-  ) +
-  
   facet_wrap(~ group) +
   
   scale_color_manual(values = c(
@@ -154,8 +173,9 @@ pre_fd_split <- ggplot() +
     y = "DMN",
     color = "Step direction"
   )
-
+print(pre_fd_split)
 #save
+
 ggsave(
   "dmn_withinconn_longitudinal_preFD_split.png",
   plot = pre_fd_split,
@@ -176,11 +196,11 @@ df_one_net_postFD <- data_long_post %>%
   filter(network == network_to_plot)
 
 df_segments <- df_one_net_postFD %>%
-  arrange(sub, ses_num) %>%
+  arrange(sub, years_from_baseline) %>%
   group_by(sub) %>%
   mutate(
-    x_start = ses_num,
-    x_end = lead(ses_num),
+    x_start = years_from_baseline,
+    x_end = lead(years_from_baseline),
     y_start = within_conn,
     y_end = lead(within_conn),
     direction = case_when(
@@ -205,12 +225,6 @@ post_fd <- ggplot() +
     alpha = 0.6,
     linewidth = 0.6
   ) +
-  geom_point(
-    data = df_one_net_postFD,
-    aes(x = ses_num, y = within_conn),
-    alpha = 0.5,
-    size = 1.5
-  ) +
   scale_color_manual(values = c(
     "up" = "#2C7BB6",
     "down" = "#D7191C",
@@ -224,7 +238,7 @@ post_fd <- ggplot() +
     y = "DMN",
     color = "Step direction"
   )
-
+print(post_fd)
 # save
 ggsave(
   "dmn_withinconn_longitudinal_postFD.png",
@@ -262,13 +276,6 @@ post_fd_split <- ggplot() +
     linewidth = 0.6
   ) +
   
-  geom_point(
-    data = df_one_net_postFD,
-    aes(x = ses_num, y = within_conn),
-    alpha = 0.5,
-    size = 1.5
-  ) +
-  
   facet_wrap(~ group) +
   
   scale_color_manual(values = c(
@@ -284,7 +291,7 @@ post_fd_split <- ggplot() +
     y = "DMN",
     color = "Step direction"
   )
-
+print(post_fd_split)
 # save
 ggsave(
   "dmn_withinconn_longitudinal_postFD_split.png",
@@ -328,12 +335,12 @@ demos_withinconn <- read_csv("age_atscan.csv") %>%
 demos_withinconn <- demos_withinconn %>%
   mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
 
-# compute months from baseline for each subject
+# compute years from baseline for each subject
 demos_withinconn <- demos_withinconn %>%
   group_by(sub_id) %>%
   mutate(
     baseline_date = scandate[which.min(ses_num)],
-    months_from_baseline = interval(baseline_date, scandate) / years(1)
+    years_from_baseline = interval(baseline_date, scandate) / years(1)
   ) %>%
   ungroup()
 
@@ -367,14 +374,11 @@ df_one_net <- data_long %>%
 # 3. Create prediction data for each subject
 # ============================================================
 
-df_one_net <- df_one_net %>%
-  mutate(
-    months_from_baseline_sc = as.numeric(scale(months_from_baseline)))
 
 model_dmn <- lmer(
-  within_conn ~ months_from_baseline + mean_FD + msex + site +
+  within_conn ~ years_from_baseline + mean_FD + msex + site +
     age_scandate + eyes +
-    (1 + months_from_baseline | sub_id),
+    (1 + years_from_baseline | sub_id),
   data = df_one_net
 )
 
@@ -390,9 +394,9 @@ model_data <- model.frame(model_dmn)
 pred_dmn <- model_data %>%
   group_by(sub_id) %>%
   summarise(
-    months_from_baseline = list(seq(
-      min(months_from_baseline, na.rm = TRUE),
-      max(months_from_baseline, na.rm = TRUE),
+    years_from_baseline = list(seq(
+      min(years_from_baseline, na.rm = TRUE),
+      max(years_from_baseline, na.rm = TRUE),
       length.out = 50
     )),
     mean_FD = mean(mean_FD, na.rm = TRUE),
@@ -402,7 +406,7 @@ pred_dmn <- model_data %>%
     eyes = first(as.character(eyes)),
     .groups = "drop"
   ) %>%
-  unnest(months_from_baseline) %>%
+  unnest(years_from_baseline) %>%
   mutate(
     sub_id = factor(sub_id, levels = levels(model_data$sub_id)),
     msex = factor(msex, levels = levels(model_data$msex)),
@@ -430,7 +434,7 @@ pred_dmn$predicted_dmn <- predict(
 # ============================================================
 
 pred_dmn <- pred_dmn %>%
-  arrange(sub_id, months_from_baseline) %>%
+  arrange(sub_id, years_from_baseline) %>%
   group_by(sub_id) %>%
   mutate(
     fitted_delta = last(predicted_dmn) - first(predicted_dmn),
@@ -449,7 +453,7 @@ pred_dmn <- pred_dmn %>%
 ggplot(
   pred_dmn,
   aes(
-    x = months_from_baseline,
+    x = years_from_baseline,
     y = predicted_dmn,
     group = sub_id
   )
@@ -462,68 +466,29 @@ ggplot(
   scale_color_manual(
     values = c(
       "up" = "#2C7BB6",
-      "down" = "#D7191C",
-      "flat" = "grey50"
+      "down" = "#D7191C"
     )
   ) +
-  theme_minimal(base_size = 13) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
   labs(
     title = "Model-predicted DMN trajectories across time",
     subtitle = "One straight subject-specific fitted line per subject",
     x = "Years from baseline",
-    y = "Predicted DMN within-network connectivity",
-    color = "Direction"
-  )
-
-# ============================================================
-# Extract fitted values from the mixed model
-# ============================================================
-
-df_fitted <- model.frame(model_dmn) %>%
-  as_tibble() %>%
-  mutate(
-    fitted_dmn = fitted(model_dmn)
-  )
-# ============================================================
-# Add subject-level direction: up vs down
-# ============================================================
-
-df_fitted <- df_fitted %>%
-  arrange(sub_id, months_from_baseline) %>%
-  group_by(sub_id) %>%
-  mutate(
-    n_sessions = n_distinct(months_from_baseline),
-    fitted_delta = last(fitted_dmn) - first(fitted_dmn),
-    direction = case_when(
-      n_sessions < 2 ~ "one session",
-      fitted_delta > 0 ~ "up",
-      fitted_delta < 0 ~ "down",
-      TRUE ~ "flat"
-    )
-  ) %>%
-  ungroup()
-
-# ============================================================
-# 4. Plot one fitted line per subject
-# ============================================================
-
-ggplot(df_fitted, aes(x = months_from_baseline, y = fitted_dmn, group = sub_id)) +
-  geom_line(aes(color = direction), alpha = 0.45, linewidth = 0.6) +
-  scale_color_manual(
-    values = c(
-      "up" = "#2C7BB6",
-      "down" = "#D7191C",
-      "flat" = "grey50"
-    )
-  ) +
-  scale_x_continuous(
-    breaks = sort(unique(df_fitted$months_from_baseline))
-  ) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = "Model-fitted DMN trajectories across sessions",
-    subtitle = "One fitted line per subject; blue = increasing, red = decreasing",
-    x = "Session number",
     y = "Predicted DMN within-network connectivity",
     color = "Direction"
   )
