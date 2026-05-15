@@ -108,15 +108,22 @@ pre_fd <- ggplot() +
     alpha = 0.6,
     linewidth = 0.6
   ) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
   scale_color_manual(values = c(
     "up" = "#2C7BB6",
-    "down" = "#D7191C",
-    "flat" = "grey50"
+    "down" = "#D7191C"
   )) +
-  scale_x_continuous(breaks = sort(unique(df_one_net$years_from_baseline))) +
   theme_minimal(base_size = 13) +
   labs(
-    title = paste(network_to_plot, "connectivity across sessions"),
+    title = paste(network_to_plot, "connectivity across years"),
     x = "Years from baseline",
     y = "DMN",
     color = "Step direction"
@@ -162,14 +169,21 @@ pre_fd_split <- ggplot() +
   
   scale_color_manual(values = c(
     "up" = "#2C7BB6",
-    "down" = "#D7191C",
-    "flat" = "grey50"
+    "down" = "#D7191C"
   )) +
-  
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
   theme_minimal(base_size = 13) +
   labs(
-    title = paste(network_to_plot, "connectivity across sessions (split view)"),
-    x = "Session number",
+    title = paste(network_to_plot, "connectivity across years (split view)"),
+    x = "Years from baseline",
     y = "DMN",
     color = "Step direction"
   )
@@ -230,11 +244,18 @@ post_fd <- ggplot() +
     "down" = "#D7191C",
     "flat" = "grey50"
   )) +
-  scale_x_continuous(breaks = sort(unique(df_one_net_postFD$ses_num))) +
-  theme_minimal(base_size = 13) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +  theme_minimal(base_size = 13) +
   labs(
-    title = paste(network_to_plot, "connectivity across sessions"),
-    x = "Session number",
+    title = paste(network_to_plot, "connectivity across years"),
+    x = "Years from baseline",
     y = "DMN",
     color = "Step direction"
   )
@@ -283,11 +304,19 @@ post_fd_split <- ggplot() +
     "down" = "#D7191C",
     "flat" = "grey50"
   )) +
-  
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
   theme_minimal(base_size = 13) +
   labs(
-    title = paste(network_to_plot, "connectivity across sessions (split view)"),
-    x = "Session number",
+    title = paste(network_to_plot, "connectivity across years (split view)"),
+    x = "Years from baseline",
     y = "DMN",
     color = "Step direction"
   )
