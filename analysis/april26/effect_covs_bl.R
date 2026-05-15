@@ -6,6 +6,7 @@ library(tidyr)
 library(purrr)
 library(emmeans)
 library(ggpubr)
+library(readxl)
 
 # ============================================================
 # 1. Load and prepare data
@@ -31,6 +32,34 @@ demos_withinconn <- read.csv("demos_withinconn.csv")
 #  filter(site == "BNK") %>%
 #  select(sub_ses, site)
 #write_csv(bnks, "BNK_sub_ses.csv")
+
+# add syn_bin to demos_withinconn from column distortion_correction
+demos_withinconn <- demos_withinconn %>%
+  mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
+
+variables = read_excel("variables_ses_specific_may26.xlsx") %>%
+  select(sub_id, ses_id, dcfdx)
+
+# make . entry in dcfdx column to be NA
+variables <- variables %>%
+  mutate(dcfdx = ifelse(dcfdx == ".", NA, dcfdx))
+
+# transform dcfdx 1 into NCI, 2 into CI, 3 into MCI, 4 into AD
+variables <- variables %>%
+  mutate(dcfdx = case_when(
+    dcfdx == "1" ~ "NCI",
+    dcfdx == "2" ~ "MCI",
+    dcfdx == "3" ~ "MCI",
+    dcfdx == "4" ~ "AD",
+    dcfdx == "5" ~ "AD",
+    dcfdx == "6" ~ "other",
+    TRUE ~ as.character(dcfdx)
+  ))
+
+# merge the two dfs by sub_id and ses_id 
+demos_withinconn <- demos_withinconn %>%
+  left_join(variables, by = c("sub_id", "ses_id")) 
+
 ##
 # ------------------------------------------------------------
 # Keep only the lowest/earliest session per subject
@@ -72,14 +101,16 @@ demos_withinconn <- demos_withinconn %>%
   mutate(
     mean_FD = as.numeric(mean_FD),
     msex = factor(
-  msex,
-  levels = c(0, 1),
-  labels = c("female", "male")
-),
+      msex,
+      levels = c(0, 1),
+      labels = c("female", "male")
+    ),
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
     distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
+    eyes = factor(eyes),
+    dcfdx = factor(dcfdx),
+    syn_bin = factor(syn_bin)
   )
 
 # Color palette for network-specific plots.
@@ -98,7 +129,9 @@ network_colors <- c(
 covariates_to_run <- c(
   "msex",
   "site",
-  "eyes"
+  "eyes",
+  "syn_bin",
+  "dcfdx"
 )
 
 # ------------------------------------------------------------
@@ -122,7 +155,7 @@ covariates_to_run <- c(
 
 model_formula <- as.formula(
   paste(
-    "within_conn ~ mean_FD + msex + site + age_scandate + eyes"
+    "within_conn ~ mean_FD + msex + site + age_scandate + eyes + dcfdx + syn_bin"
   )
 )
 
@@ -164,7 +197,8 @@ make_long <- function(data) {
       !is.na(msex),
       !is.na(site),
       !is.na(age_scandate),
-      !is.na(eyes)
+      !is.na(eyes),
+      !is.na(dcfdx)
     ) %>%
     droplevels()
 }
@@ -227,31 +261,23 @@ fit_model_pairwise <- function(data_long, covariate) {
   
   map_dfr(target_cols, function(net) {
     
-    # Subset to one network at a time.
     df_net <- data_long %>%
       filter(network == net) %>%
       droplevels()
     
-    # Fit the adjusted model for this network.
     model <- lm(
       model_formula,
       data = df_net
     )
     
-    # Compute estimated marginal means and pairwise comparisons
-    # for the covariate of interest.
     emm <- emmeans(
       model,
       specs = as.formula(paste("pairwise ~", covariate)),
       adjust = "tukey"
     )
     
-    # Extract only the contrast table.
     pairwise_df <- as.data.frame(emm$contrasts)
     
-    # emmeans usually returns a test statistic named "t.ratio"
-    # for linear models, but other model types may return "z.ratio".
-    # This safely detects whichever one exists.
     stat_col <- intersect(c("t.ratio", "z.ratio"), names(pairwise_df))[1]
     
     pairwise_df %>%
@@ -263,11 +289,11 @@ fit_model_pairwise <- function(data_long, covariate) {
         se = SE,
         df = if ("df" %in% names(pairwise_df)) df else NA_real_,
         statistic = .data[[stat_col]],
-        p_raw = p.value
+        p_adj = p.value
       )
   }) %>%
     mutate(
-      sig = sig_from_p(p_raw),
+      sig = sig_from_p(p_adj),
       network = factor(network, levels = target_cols)
     )
 }
@@ -303,11 +329,8 @@ fit_model_pairwise <- function(data_long, covariate) {
 #'   Stars are based on raw p-values because no correction is applied.
 make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
   
-  # Actual x-axis factor levels in the plotted data.
   x_levels <- levels(factor(data_long[[covariate]]))
   
-  # Compute y-axis bounds per network.
-  # These are used to place significance brackets.
   y_positions <- data_long %>%
     group_by(network) %>%
     summarise(
@@ -321,7 +344,7 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
     )
   
   pairwise_results %>%
-    filter(p_raw < 0.05) %>%
+    filter(p_adj < 0.05) %>%
     separate(
       contrast,
       into = c("group1", "group2"),
@@ -329,10 +352,6 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
       remove = FALSE
     ) %>%
     mutate(
-      # Fix cases like:
-      #   msex0 -> 0
-      #   msex1 -> 1
-      # This prevents ggplot from creating extra x-axis categories.
       group1_clean = str_remove(group1, paste0("^", covariate)),
       group2_clean = str_remove(group2, paste0("^", covariate)),
       
@@ -342,14 +361,9 @@ make_pairwise_brackets <- function(data_long, pairwise_results, covariate) {
     select(-group1_clean, -group2_clean) %>%
     left_join(y_positions, by = "network") %>%
     group_by(network) %>%
-    arrange(p_raw, .by_group = TRUE) %>%
+    arrange(p_adj, .by_group = TRUE) %>%
     mutate(
       bracket_number = row_number(),
-      
-      # Alternate bracket placement:
-      # first significant comparison goes above,
-      # second below,
-      # third above, etc.
       bracket_side = ifelse(bracket_number %% 2 == 1, "above", "below"),
       bracket_rank = ceiling(bracket_number / 2),
       
@@ -482,7 +496,7 @@ print_pairwise_table <- function(pairwise_results, title) {
       estimate = round(estimate, 4),
       se = round(se, 4),
       statistic = round(as.numeric(statistic), 3),
-      p_raw = signif(p_raw, 3)
+      p_adj = signif(p_adj, 3)
     ) %>%
     as_tibble() %>%
     print(n = Inf)
@@ -606,7 +620,7 @@ all_pairwise_results_table <- all_pairwise_results %>%
     estimate = round(estimate, 4),
     se = round(se, 4),
     statistic = round(as.numeric(statistic), 3),
-    p_raw = signif(p_raw, 3)
+    p_adj = signif(p_adj, 3)
   ) %>%
   as_tibble()
 
