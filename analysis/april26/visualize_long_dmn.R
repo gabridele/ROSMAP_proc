@@ -13,7 +13,7 @@ library(lubridate)
 # plotting raw data with lines connecting each subject's sessions
 # ===============================================================
 
-demos_withinconn <- read.csv("demos_withinconn.csv") %>%
+demos_withinconn <- read.csv("demos_withinconn_prepared.csv") %>%
   mutate(
     ses_num = as.numeric(str_extract(ses, "\\d+")),
     sub = factor(sub),
@@ -24,31 +24,6 @@ demos_withinconn <- read.csv("demos_withinconn.csv") %>%
     distortion_correction = factor(distortion_correction),
     eyes = factor(eyes)
   )
-
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
-  ) %>%
-  mutate(sub = factor(sub))
-
-## add scandate
-demos_withinconn <- read_csv("age_atscan.csv") %>%
-  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
-  select(c("ses_id", "sub_id", "scandate")) %>%
-  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
-
-# make scandate format yyyymmdd into a datee
-demos_withinconn <- demos_withinconn %>%
-  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
-
-# compute years from baseline for each subject
-demos_withinconn <- demos_withinconn %>%
-  group_by(sub_id) %>%
-  mutate(
-    baseline_date = scandate[which.min(ses_num)],
-    years_from_baseline = interval(baseline_date, scandate) / years(1)
-  ) %>%
-  ungroup()
 
 make_long <- function(data) {
   data %>%
@@ -336,62 +311,6 @@ ggsave(
 # ============================================================
 # with random effects 
 
-demos_withinconn <- read.csv("demos_withinconn.csv") %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+")),
-    sub = factor(sub),
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
-  )
-
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
-  ) %>%
-  mutate(sub = factor(sub))
-
-## add scandate
-demos_withinconn <- read_csv("age_atscan.csv") %>%
-  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
-  select(c("ses_id", "sub_id", "scandate")) %>%
-  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
-
-# make scandate format yyyymmdd into a datee
-demos_withinconn <- demos_withinconn %>%
-  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
-
-# compute years from baseline for each subject
-demos_withinconn <- demos_withinconn %>%
-  group_by(sub_id) %>%
-  mutate(
-    baseline_date = scandate[which.min(ses_num)],
-    years_from_baseline = interval(baseline_date, scandate) / years(1)
-  ) %>%
-  ungroup()
-
-make_long <- function(data) {
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(network = factor(network, levels = target_cols)) %>%
-    filter(
-      !is.na(ses_num),
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(distortion_correction),
-      !is.na(eyes)
-    )
-}
 data_long <- make_long(demos_withinconn)
 
 network_to_plot <- "Default"
@@ -406,7 +325,7 @@ df_one_net <- data_long %>%
 
 model_dmn <- lmer(
   within_conn ~ years_from_baseline + mean_FD + msex + site +
-    age_scandate + eyes +
+    age_scandate + eyes + dcfdx + syn_bin +
     (1 + years_from_baseline | sub_id),
   data = df_one_net
 )
@@ -433,6 +352,8 @@ pred_dmn <- model_data %>%
     site = first(as.character(site)),
     age_scandate = mean(age_scandate, na.rm = TRUE),
     eyes = first(as.character(eyes)),
+    dcfdx = first(as.character(dcfdx)),
+    syn_bin = first(as.character(syn_bin)),
     .groups = "drop"
   ) %>%
   unnest(years_from_baseline) %>%

@@ -28,6 +28,33 @@ emm_options(pbkrtest.limit = 10000)
 
 demos_withinconn <- read.csv("demos_withinconn.csv")
 
+# add syn_bin to demos_withinconn from column distortion_correction
+demos_withinconn <- demos_withinconn %>%
+  mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
+
+variables = read_excel("variables_ses_specific_may26.xlsx") %>%
+  select(sub_id, ses_id, dcfdx)
+
+# make . entry in dcfdx column to be NA
+variables <- variables %>%
+  mutate(dcfdx = ifelse(dcfdx == ".", NA, dcfdx))
+
+# transform dcfdx 1 into NCI, 2 into CI, 3 into MCI, 4 into AD
+variables <- variables %>%
+  mutate(dcfdx = case_when(
+    dcfdx == "1" ~ "NCI",
+    dcfdx == "2" ~ "MCI",
+    dcfdx == "3" ~ "MCI",
+    dcfdx == "4" ~ "AD",
+    dcfdx == "5" ~ "AD",
+    dcfdx == "6" ~ "other",
+    TRUE ~ as.character(dcfdx)
+  ))
+
+# merge the two dfs by sub_id and ses_id 
+demos_withinconn <- demos_withinconn %>%
+  left_join(variables, by = c("sub_id", "ses_id"))
+
 # Basic missingness check.
 # This prints the number of missing values per column.
 print(colSums(is.na(demos_withinconn)))
@@ -48,14 +75,16 @@ demos_withinconn <- demos_withinconn %>%
   mutate(
     mean_FD = as.numeric(mean_FD),
     msex = factor(
-  msex,
-  levels = c(0, 1),
-  labels = c("female", "male")
-),
+      msex,
+      levels = c(0, 1),
+      labels = c("female", "male")
+    ),
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
     distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
+    eyes = factor(eyes),
+    dcfdx = factor(dcfdx),
+    syn_bin = factor(syn_bin)
   )
 
 # Color palette for network-specific plots.
@@ -74,7 +103,9 @@ network_colors <- c(
 covariates_to_run <- c(
   "msex",
   "site",
-  "eyes"
+  "eyes",
+  "syn_bin",
+  "dcfdx"
 )
 
 # ------------------------------------------------------------
@@ -98,7 +129,7 @@ covariates_to_run <- c(
 
 model_formula <- as.formula(
   paste(
-    "within_conn ~ mean_FD + msex + site + age_scandate + eyes + (1 | sub)"
+    "within_conn ~ mean_FD + msex + site + age_scandate + eyes + dcfdx + syn_bin + (1 | sub)"
   )
 )
 
@@ -140,7 +171,9 @@ make_long <- function(data) {
       !is.na(msex),
       !is.na(site),
       !is.na(age_scandate),
-      !is.na(eyes)
+      !is.na(eyes),
+      !is.na(dcfdx),
+      !is.na(syn_bin)
     ) %>%
     droplevels()
 }
@@ -195,10 +228,8 @@ sig_from_p <- function(p) {
 #'
 #'   means the estimated marginal mean for siteA minus the estimated
 #'   marginal mean for siteB, adjusted for the other covariates.
-#'
-#' Note:
-#'   No multiple-comparison correction is applied here. The p-values
-#'   are raw p-values from emmeans.
+
+
 fit_model_pairwise <- function(data_long, covariate) {
   
   map_dfr(target_cols, function(net) {

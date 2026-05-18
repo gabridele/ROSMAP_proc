@@ -254,9 +254,7 @@ sig_from_p <- function(p) {
 #'   means the estimated marginal mean for siteA minus the estimated
 #'   marginal mean for siteB, adjusted for the other covariates.
 #'
-#' Note:
-#'   No multiple-comparison correction is applied here. The p-values
-#'   are raw p-values from emmeans.
+
 fit_model_pairwise <- function(data_long, covariate) {
   
   map_dfr(target_cols, function(net) {
