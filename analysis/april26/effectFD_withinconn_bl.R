@@ -83,7 +83,7 @@ fit_fd_models <- function(data_long) {
     
     model_adj <- lm(
       within_conn ~ mean_FD + msex + site + age_scandate +
-        distortion_correction + eyes,
+        syn_bin + eyes + dcfdx,
       data = df_net
     )
     

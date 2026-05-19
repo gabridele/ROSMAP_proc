@@ -31,7 +31,7 @@ other_demos <- other_demos %>%
 other_demos <- other_demos %>%
   filter(sub_ses %in% ders_withage$sub_ses)
 
-
+# ignore warning about '.' its a placeholder for undisclosed values
 rosmap_demos <- read_excel("ROSMAP_demos2026.xlsx")
 
 rosmap_demos <- rosmap_demos %>%
@@ -92,7 +92,37 @@ study_count <- sexcount_df %>%
   summarise(count = n())
 print(study_count)
 
-demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_240426.csv")
+
+
+demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_190526.csv")
 
 demos_withinconn <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
+
+# add syn_bin to demos_withinconn from column distortion_correction
+demos_withinconn <- demos_withinconn %>%
+  mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
+
+variables = read_excel("variables_ses_specific_may26.xlsx") %>%
+  select(sub_id, ses_id, dcfdx)
+
+# make . entry in dcfdx column to be NA
+variables <- variables %>%
+  mutate(dcfdx = ifelse(dcfdx == ".", NA, dcfdx))
+
+# transform dcfdx 1 into NCI, 2 into CI, 3 into MCI, 4 into AD
+variables <- variables %>%
+  mutate(dcfdx = case_when(
+    dcfdx == "1" ~ "NCI",
+    dcfdx == "2" ~ "MCI",
+    dcfdx == "3" ~ "MCI",
+    dcfdx == "4" ~ "AD",
+    dcfdx == "5" ~ "AD",
+    dcfdx == "6" ~ "other",
+    TRUE ~ as.character(dcfdx)
+  ))
+
+# merge the two dfs by sub_id and ses_id 
+demos_withinconn <- demos_withinconn %>%
+  left_join(variables, by = c("sub_id", "ses_id"))
+
 write_csv(demos_withinconn, "demos_withinconn.csv")

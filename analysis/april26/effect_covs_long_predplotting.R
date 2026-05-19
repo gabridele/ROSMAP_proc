@@ -20,33 +20,33 @@ emm_options(lmerTest.limit = 50000)
 demos_withinconn <- read.csv("demos_withinconn.csv")
 
 # Add binary SyN variable
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
-  )
-
-# Load diagnosis/session-specific variables
-variables <- read_excel("variables_ses_specific_may26.xlsx") %>%
-  select(sub_id, ses_id, dcfdx) %>%
-  mutate(
-    dcfdx = ifelse(dcfdx == ".", NA, dcfdx),
-    dcfdx = case_when(
-      dcfdx == "1" ~ "NCI",
-      dcfdx == "2" ~ "MCI",
-      dcfdx == "3" ~ "MCI",
-      dcfdx == "4" ~ "AD",
-      dcfdx == "5" ~ "AD",
-      dcfdx == "6" ~ "other",
-      TRUE ~ as.character(dcfdx)
-    )
-  )
-
-# Merge diagnosis into main dataframe
-demos_withinconn <- demos_withinconn %>%
-  left_join(variables, by = c("sub_id", "ses_id"))
-
-# Missingness check before filtering/modeling
-print(colSums(is.na(demos_withinconn)))
+#demos_withinconn <- demos_withinconn %>%
+#  mutate(
+#    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
+#  )
+#
+## Load diagnosis/session-specific variables
+#variables <- read_excel("variables_ses_specific_may26.xlsx") %>%
+#  select(sub_id, ses_id, dcfdx) %>%
+#  mutate(
+#    dcfdx = ifelse(dcfdx == ".", NA, dcfdx),
+#    dcfdx = case_when(
+#      dcfdx == "1" ~ "NCI",
+#      dcfdx == "2" ~ "MCI",
+#      dcfdx == "3" ~ "MCI",
+#      dcfdx == "4" ~ "AD",
+#      dcfdx == "5" ~ "AD",
+#      dcfdx == "6" ~ "other",
+#      TRUE ~ as.character(dcfdx)
+#    )
+#  )
+#
+## Merge diagnosis into main dataframe
+#demos_withinconn <- demos_withinconn %>%
+#  left_join(variables, by = c("sub_id", "ses_id"))
+#
+## Missingness check before filtering/modeling
+#print(colSums(is.na(demos_withinconn)))
 
 # Network columns
 target_cols <- c(
@@ -107,7 +107,7 @@ demos_withinconn <- demos_withinconn %>%
   ungroup()
 
 #save csv with new variables and type conversions
-write.csv(demos_withinconn, "demos_withinconn_prepared.csv", row.names = FALSE)
+write.csv(demos_withinconn, "demos_withinconn_prepared_1905.csv", row.names = FALSE)
 
 network_colors <- c(
   "Vis" = "#9B59B6",
@@ -299,7 +299,9 @@ make_pairwise_brackets <- function(predicted_data, pairwise_results, covariate) 
 # 6. Plot predicted distributions
 # ============================================================
 
-plot_factor_covariate <- function(data_long, covariate, pairwise_results, title) {
+plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
+                                  y_limits = NULL,
+                                  y_breaks = NULL) {
   
   predicted_data <- get_predicted_data(data_long)
   
@@ -339,7 +341,11 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title)
     scale_color_manual(values = network_colors) +
     scale_fill_manual(values = network_colors) +
     scale_y_continuous(
+      breaks = y_breaks,
       expand = expansion(mult = c(0.18, 0.18))
+    ) +
+    coord_cartesian(
+      ylim = y_limits
     ) +
     theme_minimal(base_size = 13) +
     theme(
@@ -350,7 +356,7 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title)
     ) +
     labs(
       title = title,
-      subtitle = "Violin/box/jitter show lmer-fitted values; stars show Tukey-adjusted emmeans comparisons",
+      subtitle = "Violin/box/jitter show model-predicted values; stars show Tukey-adjusted emmeans comparisons",
       x = covariate,
       y = "Predicted within-network connectivity"
     )
@@ -398,7 +404,9 @@ print_pairwise_table <- function(pairwise_results, title) {
 # 8. Wrapper
 # ============================================================
 
-run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffix) {
+run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffix,
+                                y_limits = NULL,
+                                y_breaks = NULL) {
   
   pairwise_results <- fit_model_pairwise(
     data_long = data_long,
@@ -407,25 +415,22 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
   
   print_pairwise_table(
     pairwise_results,
-    paste0(analysis_label, ": lmer-based pairwise comparisons for ", covariate)
+    paste0(analysis_label, ": model-based pairwise comparisons for ", covariate)
   )
   
   p <- plot_factor_covariate(
     data_long = data_long,
     covariate = covariate,
     pairwise_results = pairwise_results,
-    title = paste0(
-      analysis_label,
-      ": lmer-predicted distribution by ",
-      covariate,
-      ", longitudinal (1 | subject)"
-    )
+    title = paste0(analysis_label, ": model-predicted distribution by ", covariate),
+    y_limits = y_limits,
+    y_breaks = y_breaks
   )
   
   print(p)
   
   ggsave(
-    filename = paste0("withinconn_lmer_predicted_", covariate, "_", file_suffix, ".png"),
+    filename = paste0("withinconn_predicted_", covariate, "_", file_suffix, ".png"),
     plot = p,
     width = 13,
     height = 9,
@@ -437,6 +442,9 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
     plot = p
   )
 }
+
+fixed_y_limits <- c(0, 0.6)
+fixed_y_breaks <- seq(0, 0.6, by = 0.25)
 
 # ============================================================
 # 9. Pre-filtering analysis
@@ -450,7 +458,9 @@ pre_results <- map(
     data_long = data_long_pre,
     covariate = .x,
     analysis_label = "Pre-filtering",
-    file_suffix = "preFDfilter"
+    file_suffix = "preFDfilter",
+    y_limits = fixed_y_limits,
+    y_breaks = fixed_y_breaks
   )
 )
 
@@ -470,7 +480,9 @@ post_results <- map(
     data_long = data_long_post,
     covariate = .x,
     analysis_label = paste0("Post-filtering, mean_FD < ", fd_threshold),
-    file_suffix = "postFDfilter"
+    file_suffix = "postFDfilter",
+    y_limits = fixed_y_limits,
+    y_breaks = fixed_y_breaks
   )
 )
 

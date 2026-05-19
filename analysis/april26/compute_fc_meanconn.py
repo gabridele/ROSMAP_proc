@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
+from glob import glob
 
 # =============================================================================
 # Configuration
@@ -33,14 +33,9 @@ ATLAS_PATH = Path(
     "atlas-4S456Parcels/atlas-4S456Parcels_dseg.tsv"
 )
 
-# folder to rescued with v2525 nobbr
-FOLDER_A = Path("/Users/ga0034de/Desktop/freesurfernobbr_xcpd_output")
-# folder to rescued with v2525 bbr
-FOLDER_B = Path("/Volumes/GabrieleSSD/tosend")
-# folder to rest of scans
-FOLDER_C = Path("/Volumes/research/LU26D1023-DemonLab/DemonLab/ROSMAP/derivatives/xcpd/unzipped")
+# supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_240426.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_190526.csv")
 
 EXPECTED_N_PARCELS = 456
 
@@ -136,73 +131,75 @@ def extract_sub_ses_id(file_path: Path) -> str:
     str
         Subject/session identifier.
     """
-    parts = file_path.stem.split("_")
+    # get filename from abs path
+    file_path = file_path.split("/")[-1]
+    parts = file_path.split("_")
     return "_".join(parts[:2])
 
 
-def collect_timeseries_files(
-    folder_a: Path,
-    folder_b: Path,
-    folder_c: Path,
-) -> list[Path]:
-    """
-    Collect timeseries files from folders A, B, and C.
+# def collect_timeseries_files(
+#     folder_a: Path,
+#     folder_b: Path,
+#     folder_c: Path,
+# ) -> list[Path]:
+#     """
+#     Collect timeseries files from folders A, B, and C.
 
-    Rules
-    -----
-    - Include all CSV files from folder A.
-    - Include all CSV files from folder B.
-    - Include CSV files from folder C only if their subject/session ID
-      is not already present in A or B.
+#     Rules
+#     -----
+#     - Include all CSV files from folder A.
+#     - Include all CSV files from folder B.
+#     - Include CSV files from folder C only if their subject/session ID
+#       is not already present in A or B.
 
-    Deduplication is based on subject/session ID, not exact filename. This is
-    safer for neuroimaging workflows where filenames can differ after the
-    second underscore.
+#     Deduplication is based on subject/session ID, not exact filename. This is
+#     safer for neuroimaging workflows where filenames can differ after the
+#     second underscore.
 
-    Parameters
-    ----------
-    folder_a : Path
-        First input folder.
-    folder_b : Path
-        Second input folder.
-    folder_c : Path
-        Third input folder that may contain duplicates.
+#     Parameters
+#     ----------
+#     folder_a : Path
+#         First input folder.
+#     folder_b : Path
+#         Second input folder.
+#     folder_c : Path
+#         Third input folder that may contain duplicates.
 
-    Returns
-    -------
-    list[Path]
-        Combined list of timeseries files to process.
-    """
-    files_a = sorted(folder_a.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
-    files_b = sorted(folder_b.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
-    files_c_all = sorted(folder_c.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
+#     Returns
+#     -------
+#     list[Path]
+#         Combined list of timeseries files to process.
+#     """
+#     files_a = sorted(folder_a.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
+#     files_b = sorted(folder_b.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
+#     files_c_all = sorted(folder_c.glob("sub-*_ses-*/*nifti/sub-*/ses-*/func/*space-MNI152NLin6Asym_seg-4S456Parcels_stat-mean_timeseries.tsv"))
     
-    ids_ab = {extract_sub_ses_id(f) for f in files_a + files_b}
+#     ids_ab = {extract_sub_ses_id(f) for f in files_a + files_b}
 
-    files_c = [
-        f for f in files_c_all
-        if extract_sub_ses_id(f) not in ids_ab
-    ]
+#     files_c = [
+#         f for f in files_c_all
+#         if extract_sub_ses_id(f) not in ids_ab
+#     ]
 
-    skipped_c = [
-        f for f in files_c_all
-        if extract_sub_ses_id(f) in ids_ab
-    ]
+#     skipped_c = [
+#         f for f in files_c_all
+#         if extract_sub_ses_id(f) in ids_ab
+#     ]
 
-    print("\n--- File summary ---")
-    print(f"Folder A files: {len(files_a)}")
-    print(f"Folder B files: {len(files_b)}")
-    print(f"Folder C files total: {len(files_c_all)}")
-    print(f"Folder C files included: {len(files_c)}")
-    print(f"Folder C files skipped as duplicates: {len(skipped_c)}")
-    print(f"Total files to process: {len(files_a) + len(files_b) + len(files_c)}")
+#     print("\n--- File summary ---")
+#     print(f"Folder A files: {len(files_a)}")
+#     print(f"Folder B files: {len(files_b)}")
+#     print(f"Folder C files total: {len(files_c_all)}")
+#     print(f"Folder C files included: {len(files_c)}")
+#     print(f"Folder C files skipped as duplicates: {len(skipped_c)}")
+#     print(f"Total files to process: {len(files_a) + len(files_b) + len(files_c)}")
 
-    if skipped_c:
-        print("\nSkipped duplicate files from C, first 10:")
-        for f in skipped_c[:10]:
-            print(f"  {f.name}")
+#     if skipped_c:
+#         print("\nSkipped duplicate files from C, first 10:")
+#         for f in skipped_c[:10]:
+#             print(f"  {f.name}")
 
-    return files_a + files_b + files_c
+#     return files_a + files_b + files_c
 
 
 # =============================================================================
@@ -239,10 +236,10 @@ def load_and_filter_timeseries(
     """
     ts = pd.read_csv(file_path, sep="\t").to_numpy()
     # shape of pandas dataframe is (timepoints, parcels)
-    print(f"Shape of {file_path.name}: {ts.shape}")
+    print(f"Shape of {file_path}: {ts.shape}")
     if ts.shape[1] != expected_n_parcels:
         raise ValueError(
-            f"{file_path.name} has {ts.shape[1]} columns, "
+            f"{file_path} has {ts.shape[1]} columns, "
             f"expected {expected_n_parcels}."
         )
 
@@ -294,7 +291,7 @@ def compute_mean_within_network(
     float
         Mean within-network connectivity.
 
-        If use_fisher_z=True, this returns the mean in Fisher-z space.
+        If use_fisher_z=True, this returns the mean after applying the Fisher z transform and then back-transforming to correlation space.
         If use_fisher_z=False, this returns the mean raw correlation.
     """
     idx = np.where(network_labels == network)[0]
@@ -314,11 +311,64 @@ def compute_mean_within_network(
         edge_values = np.clip(edge_values, -0.999999, 0.999999)
 
         # Fisher z transform.
+        # z-transform is used because you are averaging correlation coefficients. 
+        # It is statistically cleaner than averaging raw correlations directly.
+
         # To turn this off, set USE_FISHER_Z = False at the top of the script.
         edge_values = np.arctanh(edge_values)
-
+        return np.tanh(np.nanmean(edge_values))
     return np.nanmean(edge_values)
 
+#### compute between-network connectivity
+def compute_mean_between_network(
+    fc: np.ndarray,
+    network_labels: np.ndarray,
+    network_a: str,
+    network_b: str,
+    use_fisher_z: bool = True,
+) -> float:
+
+    """
+    Compute mean between-network connectivity for two networks.
+
+    Parameters
+    ----------
+    fc : np.ndarray
+        Functional connectivity matrix.
+    network_labels : np.ndarray
+        Network labels after removing NaN parcels.
+    network_a : str
+        First network label.
+    network_b : str
+        Second network label.
+    use_fisher_z : bool, optional
+        If True, apply Fisher z transform before averaging.
+        If False, average raw correlations.
+
+    Returns
+    -------
+    float
+        Mean between-network connectivity.
+
+        If use_fisher_z=True, this returns the mean after applying the Fisher z transform and then back-transforming to correlation space.
+        If use_fisher_z=False, this returns the mean raw correlation.
+    """
+    idx_a = np.where(network_labels == network_a)[0]
+    idx_b = np.where(network_labels == network_b)[0]
+
+    if len(idx_a) == 0 or len(idx_b) == 0:
+        return np.nan
+
+    submat = fc[np.ix_(idx_a, idx_b)]
+    edge_values = submat.flatten()
+    edge_values = pd.to_numeric(edge_values, errors="coerce")
+    
+    if use_fisher_z:
+        edge_values = np.clip(edge_values, -0.999999, 0.999999)
+        edge_values = np.arctanh(edge_values)
+        return np.tanh(np.nanmean(edge_values))
+    
+    return np.nanmean(edge_values)
 
 # =============================================================================
 # Main workflow
@@ -346,14 +396,14 @@ def main() -> None:
         n_parcels = np.sum(network_labels_valid == network)
         print(f"{network}: {n_parcels} parcels")
 
-    files = collect_timeseries_files(FOLDER_A, FOLDER_B, FOLDER_C)
+    files = glob("/Users/ga0034de/Desktop/timeseries_1905/*.tsv")
 
     results = []
 
     print("\n--- Processing timeseries files ---")
 
     for file_path in files:
-        print(f"Processing: {file_path.name}")
+        print(f"Processing: {file_path}")
 
         ts = load_and_filter_timeseries(
             file_path=file_path,
@@ -363,7 +413,7 @@ def main() -> None:
 
         if ts.shape[1] != len(network_labels_valid):
             raise ValueError(
-                f"After filtering, {file_path.name} has {ts.shape[1]} parcels, "
+                f"After filtering, {file_path} has {ts.shape[1]} parcels, "
                 f"but atlas labels have {len(network_labels_valid)} parcels."
             )
 
@@ -382,7 +432,18 @@ def main() -> None:
                 network=network,
                 use_fisher_z=USE_FISHER_Z,
             )
-
+        for i in range(len(networks)):
+            for j in range(i+1, len(networks)):
+                network_a = networks[i]
+                network_b = networks[j]
+                row[f"{network_a}_to_{network_b}"] = compute_mean_between_network(
+                    fc=fc,
+                    network_labels=network_labels_valid,
+                    network_a=network_a,
+                    network_b=network_b,
+                    use_fisher_z=USE_FISHER_Z,
+                )
+        
         results.append(row)
 
     output_df = pd.DataFrame(results)

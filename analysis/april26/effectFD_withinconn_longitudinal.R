@@ -79,7 +79,7 @@ fit_fd_models <- function(data_long) {
       filter(network == net)
     
     model_adj <- lmer(
-      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + (1 | sub),
+      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub),
       data = df_net
     )
     
@@ -115,7 +115,7 @@ get_adjusted_predictions <- function(data_long) {
       filter(network == net)
     
     model_adj <- lmer(
-      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + (1 | sub),
+      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub),
       data = df_net
     )
     
@@ -272,26 +272,26 @@ ggsave(
 # misc
 # fixed-effect model matrix is rank deficient so dropping 2 columns / coefficients
 
-data_long_post %>%
-  summarise(
-    msex = n_distinct(msex),
-    site = n_distinct(site),
-    distortion = n_distinct(distortion_correction),
-    eyes = n_distinct(eyes)
-  )
-
-
-model_test <- lmer(
-  within_conn ~ mean_FD + ses_num + msex + site + age_scandate +
-    distortion_correction + eyes + (1 | sub),
-  data = data_long_post
-)
-
-alias(lm(
-  within_conn ~ mean_FD + ses_num + msex + site + age_scandate +
-    distortion_correction + eyes,
-  data = data_long_post
-))
-
-table(data_long_post$site, data_long_post$distortion_correction)
-table(data_long_post$site, data_long_post$eyes)
+#data_long_post %>%
+#  summarise(
+#    msex = n_distinct(msex),
+#    site = n_distinct(site),
+#    distortion = n_distinct(distortion_correction),
+#    eyes = n_distinct(eyes)
+#  )
+#
+#
+#model_test <- lmer(
+#  within_conn ~ mean_FD + ses_num + msex + site + age_scandate +
+#    distortion_correction + eyes + (1 | sub),
+#  data = data_long_post
+#)
+#
+#alias(lm(
+#  within_conn ~ mean_FD + ses_num + msex + site + age_scandate +
+#    distortion_correction + eyes,
+#  data = data_long_post
+#))
+#
+#table(data_long_post$site, data_long_post$distortion_correction)
+#table(data_long_post$site, data_long_post$eyes)

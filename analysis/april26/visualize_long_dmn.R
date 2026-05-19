@@ -13,7 +13,7 @@ library(lubridate)
 # plotting raw data with lines connecting each subject's sessions
 # ===============================================================
 
-demos_withinconn <- read.csv("demos_withinconn_prepared.csv") %>%
+demos_withinconn <- read.csv("demos_withinconn_prepared_1905.csv") %>%
   mutate(
     ses_num = as.numeric(str_extract(ses, "\\d+")),
     sub = factor(sub),
