@@ -12,7 +12,7 @@ library(lmerTest)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_withinconn.csv")
+demos_withinconn <- read.csv("demos_conn_1905.csv")
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
@@ -213,6 +213,8 @@ print_model_table(
   model_results_pre,
   "Pre-filtering adjusted FD model results"
 )
+# save table
+write_csv(model_results_pre, "fd_effects_withinconn_longitudinal_preFDfilter_modelresults.csv")
 
 p_pre <- plot_fd_effects(
   data_long_pre,
@@ -244,6 +246,8 @@ print_model_table(
   model_results_post,
   paste0("Post-filtering adjusted FD model results: mean_FD < ", fd_threshold)
 )
+# save table
+write_csv(model_results_post, "fd_effects_withinconn_longitudinal_postFDfilter_modelresults.csv")
 
 p_post <- plot_fd_effects(
   data_long_post,
