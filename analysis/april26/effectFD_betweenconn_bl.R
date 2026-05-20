@@ -144,6 +144,7 @@ fit_fd_models <- function(data_long) {
     tibble(
       network_combo = net,
       beta_adjusted = coef(model_adj)["mean_FD"],
+      t_val_adjusted = summary(model_adj)$coefficients["mean_FD", "t value"],
       p_adjusted = summary(model_adj)$coefficients["mean_FD", "Pr(>|t|)"]
     )
   }) %>%
@@ -250,9 +251,10 @@ print_model_table <- function(model_results, title) {
   cat("============================================================\n")
   
   model_results %>%
-    select(network_combo, beta_adjusted, p_adjusted, q_adjusted, sig_adjusted) %>%
+    select(network_combo, beta_adjusted, t_val_adjusted, p_adjusted, q_adjusted, sig_adjusted) %>%
     mutate(
       beta_adjusted = round(beta_adjusted, 4),
+      t_val_adjusted = round(t_val_adjusted, 3),
       p_adjusted = signif(p_adjusted, 3),
       q_adjusted = signif(q_adjusted, 3)
     ) %>%

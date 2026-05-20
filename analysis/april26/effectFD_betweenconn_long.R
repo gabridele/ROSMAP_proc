@@ -7,6 +7,8 @@ library(purrr)
 library(ggeffects)
 library(readxl)
 library(grDevices)
+library(lme4)
+library(lmerTest)
 
 # ============================================================
 # 1. Load and prepare data
@@ -37,6 +39,7 @@ fd_threshold <- 0.25
 
 demos_betweenconn <- demos_betweenconn %>%
   mutate(
+    sub_id = factor(sub_id),
     mean_FD = as.numeric(mean_FD),
     msex = factor(msex),
     site = factor(site),
@@ -135,6 +138,7 @@ fit_fd_models <- function(data_long) {
     tibble(
       network_combo = net,
       beta_adjusted = fixef(model_adj)["mean_FD"],
+      t_val_adjusted = summary(model_adj)$coefficients["mean_FD", "t value"],
       p_adjusted = summary(model_adj)$coefficients["mean_FD", "Pr(>|t|)"]
     )
   }) %>%
@@ -241,9 +245,10 @@ print_model_table <- function(model_results, title) {
   cat("============================================================\n")
   
   model_results %>%
-    select(network_combo, beta_adjusted, p_adjusted, q_adjusted, sig_adjusted) %>%
+    select(network_combo, beta_adjusted, t_val_adjusted, p_adjusted, q_adjusted, sig_adjusted) %>%
     mutate(
       beta_adjusted = round(beta_adjusted, 4),
+      t_val_adjusted = round(t_val_adjusted, 3),
       p_adjusted = signif(p_adjusted, 3),
       q_adjusted = signif(q_adjusted, 3)
     ) %>%
@@ -294,7 +299,7 @@ data_long_post <- data_long_pre %>%
 
 model_results_post <- fit_fd_models(data_long_post)
 pred_adjusted_post <- get_adjusted_predictions(data_long_post)
-
+summary(pred_adjusted_post)
 print_model_table(
   model_results_post,
   paste0("Post-filtering adjusted FD model results: longitudinal, mean_FD < ", fd_threshold)
