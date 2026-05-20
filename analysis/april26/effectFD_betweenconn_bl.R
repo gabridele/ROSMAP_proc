@@ -50,7 +50,6 @@ demos_min_ses <- demos_min_ses %>%
     msex = factor(msex),
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
     syn_bin = factor(
       syn_bin,
       levels = c(0, 1),

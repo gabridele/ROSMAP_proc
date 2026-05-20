@@ -7,19 +7,14 @@ library(purrr)
 library(emmeans)
 library(ggpubr)
 library(readxl)
-library(lme4)
-library(lmerTest)
-
-emm_options(pbkrtest.limit = 10000)
-emm_options(lmerTest.limit = 50000)
 
 # ============================================================
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_withinconn.csv")
+demos_withinconn <- read.csv("demos_conn_1905.csv")
 
-# Add binary SyN variable
+## Add binary SyN variable
 #demos_withinconn <- demos_withinconn %>%
 #  mutate(
 #    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
@@ -45,8 +40,18 @@ demos_withinconn <- read.csv("demos_withinconn.csv")
 #demos_withinconn <- demos_withinconn %>%
 #  left_join(variables, by = c("sub_id", "ses_id"))
 #
-## Missingness check before filtering/modeling
-#print(colSums(is.na(demos_withinconn)))
+## Keep lowest/earliest session per subject
+#demos_withinconn <- demos_withinconn %>%
+#  mutate(
+#    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
+#  ) %>%
+#  group_by(sub_id) %>%
+#  arrange(ses_num) %>%
+#  slice(1) %>%
+#  ungroup()
+
+# Missingness check
+print(colSums(is.na(demos_withinconn)))
 
 # Network columns
 target_cols <- c(
@@ -57,7 +62,6 @@ target_cols <- c(
 fd_threshold <- 0.25
 
 # Type conversion
-
 demos_withinconn <- demos_withinconn %>%
   mutate(
     mean_FD = as.numeric(mean_FD),
@@ -70,10 +74,7 @@ demos_withinconn <- demos_withinconn %>%
     age_scandate = as.numeric(age_scandate),
     distortion_correction = factor(distortion_correction),
     eyes = factor(eyes),
-    dcfdx = factor(
-      dcfdx,
-      levels = c("NCI", "MCI", "AD", "other")
-    ),
+    dcfdx = factor(dcfdx),
     syn_bin = factor(
       syn_bin,
       levels = c(0, 1),
@@ -81,34 +82,7 @@ demos_withinconn <- demos_withinconn %>%
     )
   )
 
-## add scandate
-demos_withinconn <- read_csv("age_atscan.csv") %>%
-  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
-  select(c("ses_id", "sub_id", "scandate")) %>%
-  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
-
-# make scandate format yyyymmdd into a datee
-demos_withinconn <- demos_withinconn %>%
-  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
-
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
-  ) %>%
-  mutate(sub = factor(sub))
-
-# compute years from baseline for each subject
-demos_withinconn <- demos_withinconn %>%
-  group_by(sub_id) %>%
-  mutate(
-    baseline_date = scandate[which.min(ses_num)],
-    years_from_baseline = interval(baseline_date, scandate) / years(1)
-  ) %>%
-  ungroup()
-
-#save csv with new variables and type conversions
-write.csv(demos_withinconn, "demos_withinconn_prepared_1905.csv", row.names = FALSE)
-
+# Network colors
 network_colors <- c(
   "Vis" = "#9B59B6",
   "SomMot" = "#6C8EBF",
@@ -119,6 +93,7 @@ network_colors <- c(
   "Cont" = "#E5B53A"
 )
 
+# Categorical covariates to test/plot
 covariates_to_run <- c(
   "msex",
   "site",
@@ -127,9 +102,9 @@ covariates_to_run <- c(
   "dcfdx"
 )
 
-# Longitudinal random-intercept model
+# Adjusted model formula
 model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
-  eyes + dcfdx + syn_bin + (1 | sub_id)
+  eyes + dcfdx + syn_bin
 
 # ============================================================
 # 2. Helper functions
@@ -146,7 +121,6 @@ make_long <- function(data) {
       network = factor(network, levels = target_cols)
     ) %>%
     filter(
-      !is.na(sub_id),
       !is.na(mean_FD),
       !is.na(within_conn),
       !is.na(msex),
@@ -169,7 +143,7 @@ sig_from_p <- function(p) {
 }
 
 # ============================================================
-# 3. Fit lmer model and add predicted values
+# 3. Fit adjusted model and add predicted values
 # ============================================================
 
 get_predicted_data <- function(data_long) {
@@ -180,10 +154,9 @@ get_predicted_data <- function(data_long) {
       filter(network == net) %>%
       droplevels()
     
-    model <- lmer(
+    model <- lm(
       model_formula,
-      data = df_net,
-      control = lmerControl(optimizer = "bobyqa")
+      data = df_net
     )
     
     df_net %>%
@@ -208,17 +181,15 @@ fit_model_pairwise <- function(data_long, covariate) {
       filter(network == net) %>%
       droplevels()
     
-    model <- lmer(
+    model <- lm(
       model_formula,
-      data = df_net,
-      control = lmerControl(optimizer = "bobyqa")
+      data = df_net
     )
     
     emm <- emmeans(
       model,
       specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "tukey",
-      lmer.df = "satterthwaite"
+      adjust = "tukey"
     )
     
     pairwise_df <- as.data.frame(emm$contrasts)
@@ -380,7 +351,7 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
 }
 
 # ============================================================
-# 7. Print pairwise results
+# 7. Print pairwise tables
 # ============================================================
 
 print_pairwise_table <- function(pairwise_results, title) {
@@ -513,3 +484,5 @@ all_pairwise_results_table <- all_pairwise_results %>%
   as_tibble()
 
 print(all_pairwise_results_table, n = Inf)
+# save final table
+write_csv(all_pairwise_results_table, "all_pairwise_results_withinconn_covs_bl.csv")

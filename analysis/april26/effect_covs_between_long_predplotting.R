@@ -7,15 +7,26 @@ library(purrr)
 library(emmeans)
 library(ggpubr)
 library(readxl)
+library(lme4)
+library(lmerTest)
+
+emm_options(pbkrtest.limit = 10000)
+emm_options(lmerTest.limit = 50000)
 
 # ============================================================
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_withinconn.csv")
+demos_betweenconn <- read.csv("demos_conn_1905.csv")
+
+# Add numeric session
+demos_betweenconn <- demos_betweenconn %>%
+  mutate(
+    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
+  )
 
 ## Add binary SyN variable
-#demos_withinconn <- demos_withinconn %>%
+#demos_betweenconn <- demos_betweenconn %>%
 #  mutate(
 #    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
 #  )
@@ -37,11 +48,11 @@ demos_withinconn <- read.csv("demos_withinconn.csv")
 #  )
 #
 ## Merge diagnosis into main dataframe
-#demos_withinconn <- demos_withinconn %>%
+#demos_betweenconn <- demos_betweenconn %>%
 #  left_join(variables, by = c("sub_id", "ses_id"))
 #
 ## Keep lowest/earliest session per subject
-#demos_withinconn <- demos_withinconn %>%
+#demos_betweenconn <- demos_betweenconn %>%
 #  mutate(
 #    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
 #  ) %>%
@@ -51,18 +62,24 @@ demos_withinconn <- read.csv("demos_withinconn.csv")
 #  ungroup()
 
 # Missingness check
-print(colSums(is.na(demos_withinconn)))
+print(colSums(is.na(demos_betweenconn)))
 
-# Network columns
-target_cols <- c(
-  "Vis", "SomMot", "DorsAttn",
-  "SalVentAttn", "Limbic", "Cont", "Default"
+# Between-network columns
+target_combos <- c(
+  "Cont_to_Default", "Cont_to_DorsAttn",
+  "Cont_to_Limbic", "Cont_to_SalVentAttn", "Cont_to_SomMot",
+  "Cont_to_Vis", "Default_to_DorsAttn", "Default_to_Limbic",
+  "Default_to_SalVentAttn", "Default_to_SomMot", "Default_to_Vis",
+  "DorsAttn_to_Limbic", "DorsAttn_to_SalVentAttn", "DorsAttn_to_SomMot",
+  "DorsAttn_to_Vis", "Limbic_to_SalVentAttn", "Limbic_to_SomMot",
+  "Limbic_to_Vis", "SalVentAttn_to_SomMot", "SalVentAttn_to_Vis",
+  "SomMot_to_Vis"
 )
 
 fd_threshold <- 0.25
 
 # Type conversion
-demos_withinconn <- demos_withinconn %>%
+demos_betweenconn <- demos_betweenconn %>%
   mutate(
     mean_FD = as.numeric(mean_FD),
     msex = factor(
@@ -72,9 +89,11 @@ demos_withinconn <- demos_withinconn %>%
     ),
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
     eyes = factor(eyes),
-    dcfdx = factor(dcfdx),
+    dcfdx = factor(
+      dcfdx,
+      levels = c("NCI", "MCI", "AD", "other")
+    ),
     syn_bin = factor(
       syn_bin,
       levels = c(0, 1),
@@ -82,16 +101,68 @@ demos_withinconn <- demos_withinconn %>%
     )
   )
 
-# Network colors
-network_colors <- c(
-  "Vis" = "#9B59B6",
-  "SomMot" = "#6C8EBF",
-  "Default" = "#D36B78",
-  "Limbic" = "#C9D39A",
-  "DorsAttn" = "#3C8D2F",
-  "SalVentAttn" = "#C84CCF",
-  "Cont" = "#E5B53A"
+## add scandate
+demos_betweenconn <- read_csv("age_atscan.csv") %>%
+  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
+  select(c("ses_id", "sub_id", "scandate")) %>%
+  right_join(demos_betweenconn, by = c("sub_id", "ses_id"))
+
+# make scandate format yyyymmdd into a datee
+demos_betweenconn <- demos_betweenconn %>%
+  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
+
+demos_betweenconn <- demos_betweenconn %>%
+  mutate(
+    ses_num = as.numeric(str_extract(ses, "\\d+"))
+  ) %>%
+  mutate(sub = factor(sub))
+
+# compute years from baseline for each subject
+demos_betweenconn <- demos_betweenconn %>%
+  group_by(sub_id) %>%
+  mutate(
+    baseline_date = scandate[which.min(ses_num)],
+    years_from_baseline = interval(baseline_date, scandate) / years(1)
+  ) %>%
+  ungroup()
+
+# ============================================================
+# 2. Colors for between-network combos
+# ============================================================
+
+between_network_colors <- c(
+  "Cont_to_Default" = "#DC9059",
+  "Cont_to_DorsAttn" = "#91A135",
+  "Cont_to_Limbic" = "#D7C46A",
+  "Cont_to_SalVentAttn" = "#D78185",
+  "Cont_to_SomMot" = "#A9A27D",
+  "Cont_to_Vis" = "#C08778",
+  "Default_to_DorsAttn" = "#887C54",
+  "Default_to_Limbic" = "#CE9F89",
+  "Default_to_SalVentAttn" = "#CE5CA3",
+  "Default_to_SomMot" = "#A07D9C",
+  "Default_to_Vis" = "#B76297",
+  "DorsAttn_to_Limbic" = "#83B065",
+  "DorsAttn_to_SalVentAttn" = "#826D7F",
+  "DorsAttn_to_SomMot" = "#548E77",
+  "DorsAttn_to_Vis" = "#6B7373",
+  "Limbic_to_SalVentAttn" = "#C990B4",
+  "Limbic_to_SomMot" = "#9BB1AD",
+  "Limbic_to_Vis" = "#B296A8",
+  "SalVentAttn_to_SomMot" = "#9A6DC7",
+  "SalVentAttn_to_Vis" = "#B252C3",
+  "SomMot_to_Vis" = "#8474BB"
 )
+
+# Make sure color vector is in the same order as target_combos
+between_network_colors <- between_network_colors[target_combos]
+
+# ============================================================
+# 3. Model formula
+# ============================================================
+
+model_formula <- between_conn ~ mean_FD + msex + site + age_scandate +
+  eyes + dcfdx + syn_bin + (1 | sub_id)
 
 # Categorical covariates to test/plot
 covariates_to_run <- c(
@@ -102,10 +173,6 @@ covariates_to_run <- c(
   "dcfdx"
 )
 
-# Adjusted model formula
-model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
-  eyes + dcfdx + syn_bin
-
 # ============================================================
 # 2. Helper functions
 # ============================================================
@@ -113,16 +180,17 @@ model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
 make_long <- function(data) {
   data %>%
     pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
+      cols = all_of(target_combos),
+      names_to = "network_combo",
+      values_to = "between_conn"
     ) %>%
     mutate(
-      network = factor(network, levels = target_cols)
+      network_combo = factor(network_combo, levels = target_combos)
     ) %>%
     filter(
+      !is.na(sub_id),
       !is.na(mean_FD),
-      !is.na(within_conn),
+      !is.na(between_conn),
       !is.na(msex),
       !is.na(site),
       !is.na(age_scandate),
@@ -148,15 +216,16 @@ sig_from_p <- function(p) {
 
 get_predicted_data <- function(data_long) {
   
-  map_dfr(target_cols, function(net) {
+  map_dfr(target_combos, function(net) {
     
     df_net <- data_long %>%
-      filter(network == net) %>%
+      filter(network_combo == net) %>%
       droplevels()
     
-    model <- lm(
+    model <- lmer(
       model_formula,
-      data = df_net
+      data = df_net,
+      control = lmerControl(optimizer = "bobyqa")
     )
     
     df_net %>%
@@ -165,7 +234,7 @@ get_predicted_data <- function(data_long) {
       )
   }) %>%
     mutate(
-      network = factor(network, levels = target_cols)
+      network_combo = factor(network_combo, levels = target_combos)
     )
 }
 
@@ -175,21 +244,23 @@ get_predicted_data <- function(data_long) {
 
 fit_model_pairwise <- function(data_long, covariate) {
   
-  map_dfr(target_cols, function(net) {
+  map_dfr(target_combos, function(net) {
     
     df_net <- data_long %>%
-      filter(network == net) %>%
+      filter(network_combo == net) %>%
       droplevels()
     
-    model <- lm(
+    model <- lmer(
       model_formula,
-      data = df_net
+      data = df_net,
+      control = lmerControl(optimizer = "bobyqa")
     )
     
     emm <- emmeans(
       model,
       specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "tukey"
+      adjust = "tukey",
+      lmer.df = "satterthwaite"
     )
     
     pairwise_df <- as.data.frame(emm$contrasts)
@@ -198,7 +269,7 @@ fit_model_pairwise <- function(data_long, covariate) {
     
     pairwise_df %>%
       transmute(
-        network = net,
+        network_combo = net,
         covariate = covariate,
         contrast = contrast,
         estimate = estimate,
@@ -210,7 +281,7 @@ fit_model_pairwise <- function(data_long, covariate) {
   }) %>%
     mutate(
       sig = sig_from_p(p_adj),
-      network = factor(network, levels = target_cols)
+      network_combo = factor(network_combo, levels = target_combos)
     )
 }
 
@@ -223,7 +294,7 @@ make_pairwise_brackets <- function(predicted_data, pairwise_results, covariate) 
   x_levels <- levels(factor(predicted_data[[covariate]]))
   
   y_positions <- predicted_data %>%
-    group_by(network) %>%
+    group_by(network_combo) %>%
     summarise(
       y_max = max(predicted_conn, na.rm = TRUE),
       y_min = min(predicted_conn, na.rm = TRUE),
@@ -249,8 +320,8 @@ make_pairwise_brackets <- function(predicted_data, pairwise_results, covariate) 
       group2 = ifelse(group2 %in% x_levels, group2, group2_clean)
     ) %>%
     select(-group1_clean, -group2_clean) %>%
-    left_join(y_positions, by = "network") %>%
-    group_by(network) %>%
+    left_join(y_positions, by = "network_combo") %>%
+    group_by(network_combo) %>%
     arrange(p_adj, .by_group = TRUE) %>%
     mutate(
       bracket_number = row_number(),
@@ -287,8 +358,8 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
     aes(
       x = .data[[covariate]],
       y = predicted_conn,
-      color = network,
-      fill = network
+      color = network_combo,
+      fill = network_combo
     )
   ) +
     geom_violin(
@@ -307,10 +378,10 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
       alpha = 0.09,
       size = 0.4
     ) +
-    facet_wrap(~ network, scales = "fixed") +
+    facet_wrap(~ network_combo, scales = "fixed") +
     scale_x_discrete(drop = FALSE) +
-    scale_color_manual(values = network_colors) +
-    scale_fill_manual(values = network_colors) +
+    scale_color_manual(values = between_network_colors) +
+    scale_fill_manual(values = between_network_colors) +
     scale_y_continuous(
       breaks = y_breaks,
       expand = expansion(mult = c(0.18, 0.18))
@@ -329,7 +400,7 @@ plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
       title = title,
       subtitle = "Violin/box/jitter show model-predicted values; stars show Tukey-adjusted emmeans comparisons",
       x = covariate,
-      y = "Predicted within-network connectivity"
+      y = "Predicted between-network connectivity"
     )
   
   if (nrow(pairwise_annot) > 0) {
@@ -401,7 +472,7 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
   print(p)
   
   ggsave(
-    filename = paste0("withinconn_predicted_", covariate, "_", file_suffix, ".png"),
+    filename = paste0("betweenconn_predicted_", covariate, "_", file_suffix, ".png"),
     plot = p,
     width = 13,
     height = 9,
@@ -414,14 +485,14 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
   )
 }
 
-fixed_y_limits <- c(0, 0.6)
-fixed_y_breaks <- seq(0, 0.6, by = 0.25)
+fixed_y_limits <- c(-0.2, 0.25)
+fixed_y_breaks <- seq(-0.2, 0.25, by = 0.25)
 
 # ============================================================
 # 9. Pre-filtering analysis
 # ============================================================
 
-data_long_pre <- make_long(demos_withinconn)
+data_long_pre <- make_long(demos_betweenconn)
 
 pre_results <- map(
   covariates_to_run,
@@ -485,4 +556,4 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 # save final table
-write_csv(all_pairwise_results_table, "all_pairwise_results_withinconn_covs_bl.csv")
+write_csv(all_pairwise_results_table, "all_pairwise_results_betweenconn_covs_long.csv")
