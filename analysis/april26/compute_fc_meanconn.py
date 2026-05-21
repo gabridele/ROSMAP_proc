@@ -35,7 +35,7 @@ ATLAS_PATH = Path(
 
 # supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_190526.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_190526.csv")
 
 EXPECTED_N_PARCELS = 456
 

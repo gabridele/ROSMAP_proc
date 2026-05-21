@@ -6,6 +6,10 @@ library(tidyr)
 library(tidyverse)
 library(readxl)
 library(magrittr)
+library(purrr)
+library(ggpubr)
+library(readxl)
+
 #### loading of DFs
 #################################
 
@@ -94,7 +98,7 @@ print(study_count)
 
 
 
-demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_within_network_connectivity_190526.csv")
+demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_190526.csv")
 
 demos_withinconn <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
 
@@ -124,5 +128,62 @@ variables <- variables %>%
 # merge the two dfs by sub_id and ses_id 
 demos_withinconn <- demos_withinconn %>%
   left_join(variables, by = c("sub_id", "ses_id"))
+demos_withinconn <- demos_withinconn %>%
+  select(-c(sub, ses))
 
-write_csv(demos_withinconn, "demos_withinconn.csv")
+demos_withinconn <- demos_withinconn %>%
+  mutate(
+    sub_id = factor(sub_id),
+    ses_id = factor(ses_id),
+    ses_count = factor(ses_count),
+    mean_FD = as.numeric(mean_FD),
+    msex = factor(
+      msex,
+      levels = c(0, 1),
+      labels = c("female", "male")
+    ),
+    site = factor(site),
+    age_scandate = as.numeric(age_scandate),
+    age_bl = as.numeric(age_bl),
+    distortion_correction = factor(distortion_correction),
+    eyes = factor(eyes),
+    dcfdx = factor(dcfdx),
+    syn_bin = factor(
+      syn_bin,
+      levels = c(0, 1),
+      labels = c("not SyN", "SyN")
+    )
+  )
+
+#make sure connectivity columns are numeric
+colnames(demos_withinconn)
+connectivity_cols <- c(17:39)
+demos_withinconn <- demos_withinconn %>%
+  mutate(across(all_of(connectivity_cols), as.numeric))
+
+## add scandate
+demos_withinconn <- read_csv("age_atscan.csv") %>%
+  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
+  select(c("ses_id", "sub_id", "scandate")) %>%
+  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
+
+# make scandate format yyyymmdd into a datee
+demos_withinconn <- demos_withinconn %>%
+  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
+
+demos_withinconn <- demos_withinconn %>%
+  mutate(
+    ses_num = as.numeric(str_extract(ses, "\\d+"))
+  ) %>%
+  mutate(sub = factor(sub))
+
+# compute years from baseline for each subject
+demos_withinconn <- demos_withinconn %>%
+  group_by(sub_id) %>%
+  mutate(
+    baseline_date = scandate[which.min(ses_num)],
+    years_from_baseline = interval(baseline_date, scandate) / years(1)
+  ) %>%
+  ungroup()
+
+write_csv(demos_withinconn, "demos_conn_1905.csv")
