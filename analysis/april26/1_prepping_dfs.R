@@ -10,8 +10,9 @@ library(purrr)
 library(ggpubr)
 library(readxl)
 
+# ================================
 #### loading of DFs
-#################################
+# ================================
 
 ders_withage <- read_csv("derivatives_list_with_age.csv")
 # make sub_ses column to be able to merge
@@ -52,7 +53,9 @@ rosmap_demos <- rosmap_demos %>%
 rosmap_demos <- rosmap_demos %>% 
   filter(projid %in% ders_withage$sub_id)
 
-#####################################
+# ================================
+#### checking for duplicates and counting
+# ================================
 
 # count duplicates in first column
 other_demos <- other_demos %>%
@@ -74,6 +77,7 @@ ggplot(other_demos_unique, aes(x = ses_count)) +
        x = "Number of Sessions",
        y = "Frequency") +
   theme_minimal()
+
 # make table
 ses_count_table <- other_demos_unique %>%
   group_by(ses_count) %>%
@@ -97,13 +101,16 @@ study_count <- sexcount_df %>%
 print(study_count)
 
 
+# ================================
+#### loading of connectivity data
+# ================================
 
 demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_190526.csv")
 
-demos_withinconn <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
+demos_connectivity <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
 
-# add syn_bin to demos_withinconn from column distortion_correction
-demos_withinconn <- demos_withinconn %>%
+# add syn_bin to demos_connectivity from column distortion_correction
+demos_connectivity <- demos_connectivity %>%
   mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
 
 variables = read_excel("variables_ses_specific_may26.xlsx") %>%
@@ -126,12 +133,13 @@ variables <- variables %>%
   ))
 
 # merge the two dfs by sub_id and ses_id 
-demos_withinconn <- demos_withinconn %>%
+demos_connectivity <- demos_connectivity %>%
   left_join(variables, by = c("sub_id", "ses_id"))
-demos_withinconn <- demos_withinconn %>%
+demos_connectivity <- demos_connectivity %>%
   select(-c(sub, ses))
 
-demos_withinconn <- demos_withinconn %>%
+# MAKE SURE ALL COLUMNS ARE THE CORRECT TYPE
+demos_connectivity <- demos_connectivity %>%
   mutate(
     sub_id = factor(sub_id),
     ses_id = factor(ses_id),
@@ -155,30 +163,31 @@ demos_withinconn <- demos_withinconn %>%
     )
   )
 
-#make sure connectivity columns are numeric
-colnames(demos_withinconn)
+# MAKE ALL CONNECTIVITY COLUMNS NUMERIC
+colnames(demos_connectivity)
 connectivity_cols <- c(17:39)
-demos_withinconn <- demos_withinconn %>%
+demos_connectivity <- demos_connectivity %>%
   mutate(across(all_of(connectivity_cols), as.numeric))
 
-## add scandate
-demos_withinconn <- read_csv("age_atscan.csv") %>%
+## ADD SCANDATE
+demos_connectivity <- read_csv("age_atscan.csv") %>%
   separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
   select(c("ses_id", "sub_id", "scandate")) %>%
-  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
+  right_join(demos_connectivity, by = c("sub_id", "ses_id"))
 
-# make scandate format yyyymmdd into a datee
-demos_withinconn <- demos_withinconn %>%
+# MAKE SCANDATE A DATE OBJECT
+demos_connectivity <- demos_connectivity %>%
   mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
 
-demos_withinconn <- demos_withinconn %>%
+# GET NUMERIC SES ID FOR CALCULATING YEARS FROM BASELINE
+demos_connectivity <- demos_connectivity %>%
   mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
+    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
   ) %>%
-  mutate(sub = factor(sub))
+  mutate(sub_id = factor(sub_id))
 
-# compute years from baseline for each subject
-demos_withinconn <- demos_withinconn %>%
+# compute YEARS FROM BASELINE for each subject
+demos_connectivity <- demos_connectivity %>%
   group_by(sub_id) %>%
   mutate(
     baseline_date = scandate[which.min(ses_num)],
@@ -186,4 +195,8 @@ demos_withinconn <- demos_withinconn %>%
   ) %>%
   ungroup()
 
-write_csv(demos_withinconn, "demos_conn_1905.csv")
+# REARRANGE COLUMNS
+demos_connectivity <- demos_connectivity %>%
+  select(sub_id, ses_id, sub_ses, scandate, everything())
+
+write_csv(demos_connectivity, "demos_conn_2505.csv")
