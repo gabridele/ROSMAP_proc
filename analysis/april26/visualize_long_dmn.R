@@ -10,20 +10,10 @@ library(lmerTest)
 library(lubridate)
 
 # ===============================================================
-# plotting raw data with lines connecting each subject's sessions
+# Load data and prepare long format
 # ===============================================================
 
-demos_withinconn <- read.csv("demos_withinconn_prepared_1905.csv") %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+")),
-    sub = factor(sub),
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
-  )
+demos_connectivity <- read_csv("demos_conn_2505.csv")
 
 make_long <- function(data) {
   data %>%
@@ -32,7 +22,9 @@ make_long <- function(data) {
       names_to = "network",
       values_to = "within_conn"
     ) %>%
-    mutate(network = factor(network, levels = target_cols)) %>%
+    mutate(
+      network = factor(network, levels = target_cols)
+    ) %>%
     filter(
       !is.na(ses_num),
       !is.na(mean_FD),
@@ -44,300 +36,50 @@ make_long <- function(data) {
       !is.na(eyes)
     )
 }
-data_long <- make_long(demos_withinconn)
+
+data_long <- make_long(demos_connectivity)
 
 network_to_plot <- "Default"
 
 df_one_net <- data_long %>%
   filter(network == network_to_plot)
 
-# ============================================================
-
-df_segments <- df_one_net %>%
-  arrange(sub, years_from_baseline) %>%
-  group_by(sub) %>%
-  mutate(
-    x_start = years_from_baseline,
-    x_end = lead(years_from_baseline),
-    y_start = within_conn,
-    y_end = lead(within_conn),
-    direction = case_when(
-      y_end > y_start ~ "up",
-      y_end < y_start ~ "down",
-      TRUE ~ "flat"
-    )
-  ) %>%
-  filter(!is.na(x_end)) %>%
-  ungroup()
-
-pre_fd <- ggplot() +
-  geom_segment(
-    data = df_segments,
-    aes(
-      x = x_start,
-      xend = x_end,
-      y = y_start,
-      yend = y_end,
-      color = direction
-    ),
-    alpha = 0.6,
-    linewidth = 0.6
-  ) +
-  scale_x_continuous(
-    limits = c(0, NA),
-    breaks = seq(
-      0,
-      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
-      by = 1
-    ),
-    expand = c(0, 0)
-  ) +
-  scale_color_manual(values = c(
-    "up" = "#2C7BB6",
-    "down" = "#D7191C"
-  )) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = paste(network_to_plot, "connectivity across years"),
-    x = "Years from baseline",
-    y = "DMN",
-    color = "Step direction"
-  )
-print(pre_fd)
-#save
-ggsave(
-  "dmn_withinconn_longitudinal_preFD.png",
-  plot = pre_fd,
-  width = 12,
-  height = 8,
-  dpi = 300
+site_cols <- c(
+  "BNK" = "#0072B2",
+  "MG" = "#E69F00",
+  "RIRC" = "#009E73",
+  "UC" = "#d50700"
 )
 
-# -------
-## split into 4 groups for better visualization
-set.seed(123)
+# ===============================================================
+# LMER fitted lines: pre-FD
+# ===============================================================
 
-sub_groups <- df_one_net %>%
-  distinct(sub) %>%
-  mutate(group = sample(rep(1:4, length.out = nrow(.))))
-df_one_net <- df_one_net %>%
-  left_join(sub_groups, by = "sub")
-
-df_segments <- df_segments %>%
-  left_join(sub_groups, by = "sub")
-
-pre_fd_split <- ggplot() +
-  geom_segment(
-    data = df_segments,
-    aes(
-      x = x_start,
-      xend = x_end,
-      y = y_start,
-      yend = y_end,
-      color = direction
-    ),
-    alpha = 0.6,
-    linewidth = 0.6
-  ) +
-  
-  facet_wrap(~ group) +
-  
-  scale_color_manual(values = c(
-    "up" = "#2C7BB6",
-    "down" = "#D7191C"
-  )) +
-  scale_x_continuous(
-    limits = c(0, NA),
-    breaks = seq(
-      0,
-      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
-      by = 1
-    ),
-    expand = c(0, 0)
-  ) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = paste(network_to_plot, "connectivity across years (split view)"),
-    x = "Years from baseline",
-    y = "DMN",
-    color = "Step direction"
-  )
-print(pre_fd_split)
-#save
-
-ggsave(
-  "dmn_withinconn_longitudinal_preFD_split.png",
-  plot = pre_fd_split,
-  width = 12,
-  height = 8,
-  dpi = 300)
-
-####### =======================================================
-# same but after filtering for mean_FD < 0.25
-####### =======================================================
-
-
-
-data_long_post <- data_long %>%
-  filter(mean_FD < 0.25)
-
-df_one_net_postFD <- data_long_post %>%
-  filter(network == network_to_plot)
-
-df_segments <- df_one_net_postFD %>%
-  arrange(sub, years_from_baseline) %>%
-  group_by(sub) %>%
-  mutate(
-    x_start = years_from_baseline,
-    x_end = lead(years_from_baseline),
-    y_start = within_conn,
-    y_end = lead(within_conn),
-    direction = case_when(
-      y_end > y_start ~ "up",
-      y_end < y_start ~ "down",
-      TRUE ~ "flat"
-    )
-  ) %>%
-  filter(!is.na(x_end)) %>%
-  ungroup()
-
-post_fd <- ggplot() +
-  geom_segment(
-    data = df_segments,
-    aes(
-      x = x_start,
-      xend = x_end,
-      y = y_start,
-      yend = y_end,
-      color = direction
-    ),
-    alpha = 0.6,
-    linewidth = 0.6
-  ) +
-  scale_color_manual(values = c(
-    "up" = "#2C7BB6",
-    "down" = "#D7191C",
-    "flat" = "grey50"
-  )) +
-  scale_x_continuous(
-    limits = c(0, NA),
-    breaks = seq(
-      0,
-      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
-      by = 1
-    ),
-    expand = c(0, 0)
-  ) +  theme_minimal(base_size = 13) +
-  labs(
-    title = paste(network_to_plot, "connectivity across years"),
-    x = "Years from baseline",
-    y = "DMN",
-    color = "Step direction"
-  )
-print(post_fd)
-# save
-ggsave(
-  "dmn_withinconn_longitudinal_postFD.png",
-  plot = post_fd,
-  width = 12,
-  height = 8,
-  dpi = 300
-)
-
-# -------
-## split into 4 groups for better visualization
-set.seed(123)
-
-sub_groups <- df_one_net_postFD %>%
-  distinct(sub) %>%
-  mutate(group = sample(rep(1:4, length.out = nrow(.))))
-df_one_net_postFD <- df_one_net_postFD %>%
-  left_join(sub_groups, by = "sub")
-
-df_segments <- df_segments %>%
-  left_join(sub_groups, by = "sub") %>%
-  filter(sub %in% df_one_net_postFD$sub) # keep only segments for subjects that passed the FD filter
-
-post_fd_split <- ggplot() +
-  geom_segment(
-    data = df_segments,
-    aes(
-      x = x_start,
-      xend = x_end,
-      y = y_start,
-      yend = y_end,
-      color = direction
-    ),
-    alpha = 0.6,
-    linewidth = 0.6
-  ) +
-  
-  facet_wrap(~ group) +
-  
-  scale_color_manual(values = c(
-    "up" = "#2C7BB6",
-    "down" = "#D7191C",
-    "flat" = "grey50"
-  )) +
-  scale_x_continuous(
-    limits = c(0, NA),
-    breaks = seq(
-      0,
-      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
-      by = 1
-    ),
-    expand = c(0, 0)
-  ) +
-  theme_minimal(base_size = 13) +
-  labs(
-    title = paste(network_to_plot, "connectivity across years (split view)"),
-    x = "Years from baseline",
-    y = "DMN",
-    color = "Step direction"
-  )
-print(post_fd_split)
-# save
-ggsave(
-  "dmn_withinconn_longitudinal_postFD_split.png",
-  plot = post_fd_split,
-  width = 12,
-  height = 8,
-  dpi = 300
-)
-
-########################################################
-# new plotting with lmer fitted lines
-########################################################
-# ============================================================
-# with random effects 
-
-data_long <- make_long(demos_withinconn)
+data_long <- make_long(demos_connectivity)
 
 network_to_plot <- "Default"
 
 df_one_net <- data_long %>%
   filter(network == network_to_plot)
-
-# ============================================================
-# 3. Create prediction data for each subject
-# ============================================================
-
 
 model_dmn <- lmer(
   within_conn ~ years_from_baseline + mean_FD + msex + site +
     age_scandate + eyes + dcfdx + syn_bin +
     (1 + years_from_baseline | sub_id),
-  data = df_one_net
+  data = df_one_net,
+  control = lmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 100000)
+  )
 )
 
 summary(model_dmn)
+
 model_data <- model.frame(model_dmn)
 
-# ============================================================
-# 3. Build prediction data for each subject
-# ============================================================
-# For each subject, create a smooth sequence of session values.
-# Other covariates are held at that subject's typical/observed values.
+# ===============================================================
+# Build prediction data for each subject: pre-FD
+# ===============================================================
 
 pred_dmn <- model_data %>%
   group_by(sub_id) %>%
@@ -379,26 +121,160 @@ pred_dmn$predicted_dmn <- predict(
   allow.new.levels = FALSE
 )
 
-# ============================================================
-# Add subject-level direction: up vs down
-# ============================================================
+# ===============================================================
+# Add subject-level direction: pre-FD
+# Flat = fitted delta within +/- 1 SD around zero
+# ===============================================================
 
 pred_dmn <- pred_dmn %>%
   arrange(sub_id, years_from_baseline) %>%
   group_by(sub_id) %>%
   mutate(
-    fitted_delta = last(predicted_dmn) - first(predicted_dmn),
-    direction = case_when(
-      fitted_delta > 0 ~ "up",
-      fitted_delta < 0 ~ "down",
-      TRUE ~ "flat"
-    )
+    fitted_delta = last(predicted_dmn) - first(predicted_dmn)
   ) %>%
   ungroup()
 
-# ============================================================
-# Plot one model-predicted straight line per subject
-# ============================================================
+flat_threshold <- sd(
+  pred_dmn %>%
+    distinct(sub_id, fitted_delta) %>%
+    pull(fitted_delta),
+  na.rm = TRUE
+)
+
+pred_dmn <- pred_dmn %>%
+  mutate(
+    direction = case_when(
+      fitted_delta > flat_threshold ~ "up",
+      fitted_delta < -flat_threshold ~ "down",
+      TRUE ~ "flat"
+    )
+  )
+
+# ===============================================================
+# LMER fitted lines: post-FD, mean_FD < 0.25
+# ===============================================================
+
+demos_connectivity_postFD <- demos_connectivity %>%
+  filter(mean_FD < 0.25)
+
+data_long_postFD <- make_long(demos_connectivity_postFD)
+
+network_to_plot <- "Default"
+
+df_one_net_postFD <- data_long_postFD %>%
+  filter(network == network_to_plot)
+
+df_one_net_postFD_2plus <- df_one_net_postFD %>%
+  group_by(sub_id) %>%
+  filter(n() >= 2) %>%
+  ungroup()
+
+df_one_net_postFD_2plus %>%
+  count(sub_id) %>%
+  count(n)
+
+df_one_net_postFD_2plus %>%
+  count(sub_id) %>%
+  summarise(
+    n_subjects = n(),
+    min_obs = min(n),
+    mean_obs = mean(n),
+    median_obs = median(n),
+    max_obs = max(n),
+    n_with_1_obs = sum(n == 1),
+    n_with_2plus_obs = sum(n >= 2),
+    n_with_3plus_obs = sum(n >= 3)
+  )
+
+model_dmn_postFD <- lmer(
+  within_conn ~ years_from_baseline + mean_FD + msex + site +
+    age_scandate + eyes + dcfdx + syn_bin +
+    (1 + years_from_baseline | sub_id),
+  data = df_one_net_postFD_2plus,
+  control = lmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 100000)
+  )
+)
+
+summary(model_dmn_postFD)
+
+model_data_postFD <- model.frame(model_dmn_postFD) %>%
+  as_tibble()
+
+# ===============================================================
+# Build prediction data for each subject: post-FD
+# ===============================================================
+
+pred_dmn_postFD <- model_data_postFD %>%
+  group_by(sub_id) %>%
+  summarise(
+    years_from_baseline = list(seq(
+      min(years_from_baseline, na.rm = TRUE),
+      max(years_from_baseline, na.rm = TRUE),
+      length.out = 50
+    )),
+    mean_FD = mean(mean_FD, na.rm = TRUE),
+    msex = first(as.character(msex)),
+    site = first(as.character(site)),
+    age_scandate = mean(age_scandate, na.rm = TRUE),
+    eyes = first(as.character(eyes)),
+    dcfdx = first(as.character(dcfdx)),
+    syn_bin = first(as.character(syn_bin)),
+    .groups = "drop"
+  ) %>%
+  unnest(years_from_baseline) %>%
+  mutate(
+    sub_id = factor(sub_id, levels = levels(model_data_postFD$sub_id)),
+    msex = factor(msex, levels = levels(model_data_postFD$msex)),
+    site = factor(site, levels = levels(model_data_postFD$site)),
+    eyes = factor(eyes, levels = levels(model_data_postFD$eyes)),
+    dcfdx = factor(dcfdx, levels = levels(model_data_postFD$dcfdx)),
+    syn_bin = factor(syn_bin, levels = levels(model_data_postFD$syn_bin))
+  )
+
+pred_dmn_postFD$predicted_dmn <- predict(
+  model_dmn_postFD,
+  newdata = pred_dmn_postFD,
+  re.form = NULL,
+  allow.new.levels = FALSE
+)
+
+y_limits_all <- range(
+  c(pred_dmn$predicted_dmn, pred_dmn_postFD$predicted_dmn),
+  na.rm = TRUE
+)
+# ===============================================================
+# Add subject-level direction: post-FD
+# ===============================================================
+
+pred_dmn_postFD <- pred_dmn_postFD %>%
+  arrange(sub_id, years_from_baseline) %>%
+  group_by(sub_id) %>%
+  mutate(
+    fitted_delta = last(predicted_dmn) - first(predicted_dmn)
+  ) %>%
+  ungroup()
+
+flat_threshold_postFD <- sd(
+  pred_dmn_postFD %>%
+    distinct(sub_id, fitted_delta) %>%
+    pull(fitted_delta),
+  na.rm = TRUE
+)
+
+pred_dmn_postFD <- pred_dmn_postFD %>%
+  mutate(
+    direction = case_when(
+      fitted_delta > flat_threshold_postFD ~ "up",
+      fitted_delta < -flat_threshold_postFD ~ "down",
+      TRUE ~ "flat"
+    )
+  )
+
+# ===============================================================
+# Plot model-predicted lines: pre-FD, colored by direction
+# ===============================================================
 
 ggplot(
   pred_dmn,
@@ -416,7 +292,199 @@ ggplot(
   scale_color_manual(
     values = c(
       "up" = "#2C7BB6",
-      "down" = "#D7191C"
+      "down" = "#D7191C",
+      "flat" = "grey60"
+    )
+  ) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(limits = y_limits_all) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  labs(
+    title = "Model-predicted DMN trajectories across time",
+    subtitle = paste0(
+      "Flat = subject-specific fitted change between −",
+      round(flat_threshold, 4),
+      " and +",
+      round(flat_threshold, 4),
+      "; larger positive/negative changes labeled up/down"
+    ),
+    x = "Years from baseline",
+    y = "Predicted DMN within-network connectivity",
+    color = "Direction"
+  )
+
+# ===============================================================
+# Plot model-predicted lines: post-FD, colored by direction
+# ===============================================================
+
+postFD_fitted_plot <- ggplot(
+  pred_dmn_postFD,
+  aes(
+    x = years_from_baseline,
+    y = predicted_dmn,
+    group = sub_id
+  )
+) +
+  geom_line(
+    aes(color = direction),
+    alpha = 0.45,
+    linewidth = 0.6
+  ) +
+  scale_color_manual(
+    values = c(
+      "up" = "#2C7BB6",
+      "down" = "#D7191C",
+      "flat" = "grey60"
+    )
+  ) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn_postFD$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(limits = y_limits_all) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  labs(
+    title = "Post-FD-filtered model-predicted DMN trajectories across time",
+    subtitle = paste0(
+      "Flat = subject-specific fitted change between −",
+      round(flat_threshold_postFD, 4),
+      " and +",
+      round(flat_threshold_postFD, 4),
+      "; larger positive/negative changes labeled up/down"
+    ),
+    x = "Years from baseline",
+    y = "Predicted DMN within-network connectivity",
+    color = "Direction"
+  )
+
+print(postFD_fitted_plot)
+
+# ===============================================================
+# Pre-FD fitted lines: color by site at first visit
+# ===============================================================
+
+site_first_visit <- model_data %>%
+  arrange(sub_id, years_from_baseline) %>%
+  group_by(sub_id) %>%
+  summarise(
+    site_first = first(site),
+    .groups = "drop"
+  )
+
+pred_dmn <- pred_dmn %>%
+  left_join(site_first_visit, by = "sub_id")
+
+ggplot(
+  pred_dmn,
+  aes(
+    x = years_from_baseline,
+    y = predicted_dmn,
+    group = sub_id
+  )
+) +
+  geom_line(
+    aes(color = site_first),
+    alpha = 0.45,
+    linewidth = 0.6
+  ) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  scale_color_manual(
+    values = site_cols,
+    na.value = "grey80"
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black")
+  ) +
+  labs(
+    title = "Model-predicted DMN trajectories across time",
+    subtitle = "Lines colored by site at first visit",
+    x = "Years from baseline",
+    y = "Predicted DMN within-network connectivity",
+    color = "Site at first visit"
+  )
+
+# ===============================================================
+# Pre-FD fitted lines: facet by first-visit site,
+# color by whether subject changed site
+# ===============================================================
+
+site_change_info <- model_data %>%
+  arrange(sub_id, years_from_baseline) %>%
+  group_by(sub_id) %>%
+  summarise(
+    site_first = first(site),
+    n_sites = n_distinct(site),
+    changed_site = if_else(n_sites > 1, "Changed site", "Same site"),
+    .groups = "drop"
+  )
+
+pred_dmn <- pred_dmn %>%
+  select(-any_of(c(
+    "site_first",
+    "site_first.x",
+    "site_first.y",
+    "n_sites",
+    "changed_site",
+    "changed_site.x",
+    "changed_site.y"
+  ))) %>%
+  left_join(site_change_info, by = "sub_id")
+
+site_facet_change_plot <- ggplot(
+  pred_dmn,
+  aes(
+    x = years_from_baseline,
+    y = predicted_dmn,
+    group = sub_id
+  )
+) +
+  geom_line(
+    aes(color = changed_site),
+    alpha = 0.45,
+    linewidth = 0.6
+  ) +
+  facet_wrap(~ site_first) +
+  scale_color_manual(
+    values = c(
+      "Same site" = "#ad0909",
+      "Changed site" = "#5281be"
     )
   ) +
   scale_x_continuous(
@@ -433,12 +501,122 @@ ggplot(
     panel.grid.major = element_blank(),
     panel.grid.minor = element_blank(),
     axis.line = element_line(color = "black"),
-    axis.ticks = element_line(color = "black")
+    axis.ticks = element_line(color = "black"),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold")
+  ) +
+  labs(
+    title = "Model-predicted DMN trajectories across time by first-visit site",
+    subtitle = "Panels show site at first visit; line color shows whether subject changed site across visits",
+    x = "Years from baseline",
+    y = "Predicted DMN within-network connectivity",
+    color = "Site status"
+  )
+
+print(site_facet_change_plot)
+
+# ===============================================================
+# Pre-FD fitted lines: color by diagnosis at last visit
+# ===============================================================
+
+dx_last_visit <- model_data %>%
+  arrange(sub_id, years_from_baseline) %>%
+  group_by(sub_id) %>%
+  summarise(
+    dx_last = last(dcfdx),
+    .groups = "drop"
+  )
+
+pred_dmn <- pred_dmn %>%
+  select(-any_of(c("dx_last", "dx_last.x", "dx_last.y"))) %>%
+  left_join(dx_last_visit, by = "sub_id")
+
+dx_last_plot <- ggplot(
+  pred_dmn,
+  aes(
+    x = years_from_baseline,
+    y = predicted_dmn,
+    group = sub_id
+  )
+) +
+  geom_line(
+    aes(color = dx_last),
+    alpha = 0.55,
+    linewidth = 0.65
+  ) +
+  scale_color_brewer(
+    palette = "Dark2",
+    na.value = "grey70"
+  ) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    legend.position = "right"
   ) +
   labs(
     title = "Model-predicted DMN trajectories across time",
-    subtitle = "One straight subject-specific fitted line per subject",
+    subtitle = "One fitted subject-specific line per subject; color indicates diagnosis at last visit",
     x = "Years from baseline",
     y = "Predicted DMN within-network connectivity",
-    color = "Direction"
+    color = "Diagnosis at last visit"
   )
+
+print(dx_last_plot)
+
+# ===============================================================
+# Pre-FD fitted lines: facet by diagnosis at last visit
+# ===============================================================
+
+dx_last_facet_plot <- ggplot(
+  pred_dmn,
+  aes(
+    x = years_from_baseline,
+    y = predicted_dmn,
+    group = sub_id
+  )
+) +
+  geom_line(
+    color = "#2C7BB6",
+    alpha = 0.45,
+    linewidth = 0.6
+  ) +
+  facet_wrap(~ dx_last) +
+  scale_x_continuous(
+    limits = c(0, NA),
+    breaks = seq(
+      0,
+      ceiling(max(pred_dmn$years_from_baseline, na.rm = TRUE)),
+      by = 1
+    ),
+    expand = c(0, 0)
+  ) +
+  theme_classic(base_size = 13) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Model-predicted DMN trajectories across time by diagnosis at last visit",
+    subtitle = "Each panel shows subjects grouped by diagnosis at their last observed visit",
+    x = "Years from baseline",
+    y = "Predicted DMN within-network connectivity"
+  )
+
+print(dx_last_facet_plot)
