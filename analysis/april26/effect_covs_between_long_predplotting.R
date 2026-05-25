@@ -79,52 +79,52 @@ target_combos <- c(
 fd_threshold <- 0.25
 
 # Type conversion
-demos_betweenconn <- demos_betweenconn %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(
-      msex,
-      levels = c(0, 1),
-      labels = c("female", "male")
-    ),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    eyes = factor(eyes),
-    dcfdx = factor(
-      dcfdx,
-      levels = c("NCI", "MCI", "AD", "other")
-    ),
-    syn_bin = factor(
-      syn_bin,
-      levels = c(0, 1),
-      labels = c("not SyN", "SyN")
-    )
-  )
-
-## add scandate
-demos_betweenconn <- read_csv("age_atscan.csv") %>%
-  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
-  select(c("ses_id", "sub_id", "scandate")) %>%
-  right_join(demos_betweenconn, by = c("sub_id", "ses_id"))
-
-# make scandate format yyyymmdd into a datee
-demos_betweenconn <- demos_betweenconn %>%
-  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
-
-demos_betweenconn <- demos_betweenconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
-  ) %>%
-  mutate(sub = factor(sub))
-
-# compute years from baseline for each subject
-demos_betweenconn <- demos_betweenconn %>%
-  group_by(sub_id) %>%
-  mutate(
-    baseline_date = scandate[which.min(ses_num)],
-    years_from_baseline = interval(baseline_date, scandate) / years(1)
-  ) %>%
-  ungroup()
+#demos_betweenconn <- demos_betweenconn %>%
+#  mutate(
+#    mean_FD = as.numeric(mean_FD),
+#    msex = factor(
+#      msex,
+#      levels = c(0, 1),
+#      labels = c("female", "male")
+#    ),
+#    site = factor(site),
+#    age_scandate = as.numeric(age_scandate),
+#    eyes = factor(eyes),
+#    dcfdx = factor(
+#      dcfdx,
+#      levels = c("NCI", "MCI", "AD", "other")
+#    ),
+#    syn_bin = factor(
+#      syn_bin,
+#      levels = c(0, 1),
+#      labels = c("not SyN", "SyN")
+#    )
+#  )
+#
+### add scandate
+#demos_betweenconn <- read_csv("age_atscan.csv") %>%
+#  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
+#  select(c("ses_id", "sub_id", "scandate")) %>%
+#  right_join(demos_betweenconn, by = c("sub_id", "ses_id"))
+#
+## make scandate format yyyymmdd into a datee
+#demos_betweenconn <- demos_betweenconn %>%
+#  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
+#
+#demos_betweenconn <- demos_betweenconn %>%
+#  mutate(
+#    ses_num = as.numeric(str_extract(ses, "\\d+"))
+#  ) %>%
+#  mutate(sub = factor(sub))
+#
+## compute years from baseline for each subject
+#demos_betweenconn <- demos_betweenconn %>%
+#  group_by(sub_id) %>%
+#  mutate(
+#    baseline_date = scandate[which.min(ses_num)],
+#    years_from_baseline = interval(baseline_date, scandate) / years(1)
+#  ) %>%
+#  ungroup()
 
 # ============================================================
 # 2. Colors for between-network combos
