@@ -14,7 +14,10 @@ library(readxl)
 #### loading of DFs
 # ================================
 
-ders_withage <- read_csv("derivatives_list_with_age.csv")
+# get todays date in DDMM format
+today_date <- format(Sys.Date(), "%d%m")
+
+ders_withage <- read_csv("sheets/derivatives_list_with_age.csv")
 # make sub_ses column to be able to merge
 
 ders_withage <- ders_withage %>%
@@ -23,7 +26,7 @@ ders_withage <- ders_withage %>%
 ders_withage <- ders_withage %>%
   select(sub_id, ses_id, sub_ses, scanner, protocol, site, age_scandate, distortion_correction, eyes)
 
-other_demos <- read_csv("OLD_mean_within_conn_demos.csv")
+other_demos <- read_csv("sheets/OLD_mean_within_conn_demos.csv")
 other_demos <- other_demos %>%
   select(c(1:7))
 
@@ -37,7 +40,7 @@ other_demos <- other_demos %>%
   filter(sub_ses %in% ders_withage$sub_ses)
 
 # ignore warning about '.' its a placeholder for undisclosed values
-rosmap_demos <- read_excel("ROSMAP_demos2026.xlsx")
+rosmap_demos <- read_excel("sheets/ROSMAP_demos2026.xlsx")
 
 rosmap_demos <- rosmap_demos %>%
   select(c("projid", "study", "msex", "educ", "age_bl", "dcfdx_bl"))
@@ -105,7 +108,7 @@ print(study_count)
 #### loading of connectivity data
 # ================================
 
-demos_0426 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_190526.csv")
+demos_0426 <- read_csv("sheets/v1.3/mean_connectivity_230626.csv")
 
 demos_connectivity <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
 
@@ -113,7 +116,7 @@ demos_connectivity <- left_join(merged_df, demos_0426, by = c("sub_ses" = "times
 demos_connectivity <- demos_connectivity %>%
   mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
 
-variables = read_excel("variables_ses_specific_may26.xlsx") %>%
+variables = read_excel("sheets/variables_ses_specific_may26.xlsx") %>%
   select(sub_id, ses_id, dcfdx)
 
 # make . entry in dcfdx column to be NA
@@ -170,7 +173,7 @@ demos_connectivity <- demos_connectivity %>%
   mutate(across(all_of(connectivity_cols), as.numeric))
 
 ## ADD SCANDATE
-demos_connectivity <- read_csv("age_atscan.csv") %>%
+demos_connectivity <- read_csv("sheets/age_atscan.csv") %>%
   separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
   select(c("ses_id", "sub_id", "scandate")) %>%
   right_join(demos_connectivity, by = c("sub_id", "ses_id"))
@@ -199,4 +202,7 @@ demos_connectivity <- demos_connectivity %>%
 demos_connectivity <- demos_connectivity %>%
   select(sub_id, ses_id, sub_ses, scandate, everything())
 
-write_csv(demos_connectivity, "demos_conn_2505.csv")
+demos_connectivity <- demos_connectivity %>%
+  mutate(dcfdx = factor(dcfdx, levels = c("NCI", "MCI", "AD")))
+
+write_csv(demos_connectivity, paste0("sheets/v1.3/demos_conn_", today_date, ".csv"))

@@ -12,43 +12,15 @@ library(readxl)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_conn_1905.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
-## Add binary SyN variable
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(
-#    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
-#  )
-#
-## Load diagnosis/session-specific variables
-#variables <- read_excel("variables_ses_specific_may26.xlsx") %>%
-#  select(sub_id, ses_id, dcfdx) %>%
-#  mutate(
-#    dcfdx = ifelse(dcfdx == ".", NA, dcfdx),
-#    dcfdx = case_when(
-#      dcfdx == "1" ~ "NCI",
-#      dcfdx == "2" ~ "MCI",
-#      dcfdx == "3" ~ "MCI",
-#      dcfdx == "4" ~ "AD",
-#      dcfdx == "5" ~ "AD",
-#      dcfdx == "6" ~ "other",
-#      TRUE ~ as.character(dcfdx)
-#    )
-#  )
-#
-## Merge diagnosis into main dataframe
-#demos_withinconn <- demos_withinconn %>%
-#  left_join(variables, by = c("sub_id", "ses_id"))
-#
-## Keep lowest/earliest session per subject
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(
-#    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
-#  ) %>%
-#  group_by(sub_id) %>%
-#  arrange(ses_num) %>%
-#  slice(1) %>%
-#  ungroup()
+demos_withinconn <- demos_withinconn %>%
+  mutate(
+    dcfdx = factor(
+      dcfdx,
+      levels = c("NCI", "MCI", "AD", "other"),
+      labels = c("NCI", "MCI", "AD", "other")
+    ))
 
 # Missingness check
 print(colSums(is.na(demos_withinconn)))
@@ -61,26 +33,10 @@ target_cols <- c(
 
 fd_threshold <- 0.25
 
-# Type conversion
+# drop rows that have other as dfcdx
 demos_withinconn <- demos_withinconn %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(
-      msex,
-      levels = c(0, 1),
-      labels = c("female", "male")
-    ),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes),
-    dcfdx = factor(dcfdx),
-    syn_bin = factor(
-      syn_bin,
-      levels = c(0, 1),
-      labels = c("not SyN", "SyN")
-    )
-  )
+  filter(dcfdx != "other") %>%
+  droplevels()
 
 # Network colors
 network_colors <- c(

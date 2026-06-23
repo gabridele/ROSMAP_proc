@@ -10,15 +10,15 @@ library(ggeffects)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_conn_1905.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 # Missingness sanity check
 print(colSums(is.na(demos_withinconn)))
 
 # Keep lowest session per subject
 demos_min_ses <- demos_withinconn %>%
-  group_by(sub) %>%
-  slice_min(ses, with_ties = FALSE) %>%
+  group_by(sub_id) %>%
+  slice_min(ses_id, with_ties = FALSE) %>%
   ungroup()
 
 # Sanity check: should be one row per subject
@@ -30,16 +30,6 @@ target_cols <- c(
 )
 
 fd_threshold <- 0.25
-
-demos_min_ses <- demos_min_ses %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
-  )
 
 network_colors <- c(
   "Vis" = "#9B59B6",

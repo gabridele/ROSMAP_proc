@@ -13,7 +13,7 @@ library(lubridate)
 # Load data and prepare long format
 # ===============================================================
 
-demos_connectivity <- read_csv("demos_conn_2505.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 make_long <- function(data) {
   data %>%

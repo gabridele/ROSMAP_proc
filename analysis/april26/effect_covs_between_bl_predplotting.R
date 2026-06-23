@@ -13,7 +13,7 @@ library(grDevices)
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("demos_conn_1905.csv")
+demos_betweenconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 # Add numeric session
 demos_betweenconn <- demos_betweenconn %>%
@@ -85,22 +85,15 @@ fd_threshold <- 0.25
 demos_min_ses <- demos_min_ses %>%
   mutate(
     mean_FD = as.numeric(mean_FD),
-    msex = factor(
-      msex,
-      levels = c(0, 1),
-      labels = c("female", "male")
-    ),
+    msex = factor(msex),
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
     eyes = factor(eyes),
     dcfdx = factor(dcfdx),
-    syn_bin = factor(
-      syn_bin,
-      levels = c(0, 1),
-      labels = c("not SyN", "SyN")
-    )
+    syn_bin = factor(syn_bin)
   )
 
+print(colSums(is.na(demos_min_ses)))
 # ============================================================
 # 2. Colors for between-network combos
 # ============================================================
@@ -153,7 +146,8 @@ covariates_to_run <- c(
 # ============================================================
 
 make_long <- function(data) {
-  data %>%
+  
+  long_raw <- data %>%
     pivot_longer(
       cols = all_of(target_combos),
       names_to = "network_combo",
@@ -161,7 +155,27 @@ make_long <- function(data) {
     ) %>%
     mutate(
       network_combo = factor(network_combo, levels = target_combos)
-    ) %>%
+    )
+  
+  cat("\nRows after pivot:", nrow(long_raw), "\n")
+  
+  cat("\nMissingness before model filter:\n")
+  print(
+    long_raw %>%
+      summarise(
+        n = n(),
+        mean_FD_missing = sum(is.na(mean_FD)),
+        between_conn_missing = sum(is.na(between_conn)),
+        msex_missing = sum(is.na(msex)),
+        site_missing = sum(is.na(site)),
+        age_scandate_missing = sum(is.na(age_scandate)),
+        syn_bin_missing = sum(is.na(syn_bin)),
+        eyes_missing = sum(is.na(eyes)),
+        dcfdx_missing = sum(is.na(dcfdx))
+      )
+  )
+  
+  long_filtered <- long_raw %>%
     filter(
       !is.na(mean_FD),
       !is.na(between_conn),
@@ -173,6 +187,10 @@ make_long <- function(data) {
       !is.na(dcfdx)
     ) %>%
     droplevels()
+  
+  cat("\nRows after model filter:", nrow(long_filtered), "\n")
+  
+  long_filtered
 }
 
 sig_from_p <- function(p) {

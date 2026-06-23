@@ -14,7 +14,7 @@ library(lmerTest)
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("demos_conn_1905.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 # Add numeric session 
 demos_betweenconn <- demos_betweenconn %>%
@@ -45,16 +45,9 @@ demos_betweenconn <- demos_betweenconn %>%
     site = factor(site),
     age_scandate = as.numeric(age_scandate),
     distortion_correction = factor(distortion_correction),
-    syn_bin = factor(
-      syn_bin,
-      levels = c(0, 1),
-      labels = c("not SyN", "SyN")
-    ),
+    syn_bin = factor(syn_bin),
     eyes = factor(eyes),
-    dcfdx = factor(
-      dcfdx,
-      levels = c("NCI", "MCI", "AD", "other")
-    )
+    dcfdx = factor(dcfdx)
   )
 
 # ============================================================

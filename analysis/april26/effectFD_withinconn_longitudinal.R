@@ -16,9 +16,9 @@ demos_withinconn <- read.csv("demos_conn_1905.csv")
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
-    ses_num = as.numeric(str_extract(ses, "\\d+"))
+    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
   ) %>%
-  mutate(sub = factor(sub))
+  mutate(sub_id = factor(sub_id))
 
 target_cols <- c(
   "Vis", "SomMot", "DorsAttn",
@@ -26,16 +26,6 @@ target_cols <- c(
 )
 
 fd_threshold <- 0.25
-
-demos_withinconn <- demos_withinconn %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    distortion_correction = factor(distortion_correction),
-    eyes = factor(eyes)
-  )
 
 network_colors <- c(
   "Vis" = "#9B59B6",
@@ -79,7 +69,7 @@ fit_fd_models <- function(data_long) {
       filter(network == net)
     
     model_adj <- lmer(
-      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub),
+      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub_id),
       data = df_net
     )
     
@@ -116,7 +106,7 @@ get_adjusted_predictions <- function(data_long) {
       filter(network == net)
     
     model_adj <- lmer(
-      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub),
+      within_conn ~ mean_FD + ses_num + msex + site + age_scandate + eyes + syn_bin + dcfdx + (1 | sub_id),
       data = df_net
     )
     

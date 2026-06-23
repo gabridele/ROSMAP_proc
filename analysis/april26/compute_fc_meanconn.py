@@ -3,10 +3,8 @@ Compute mean within-network functional connectivity for 4S456 atlas timeseries.
 
 This script:
 1. Loads parcel network labels from the atlas TSV.
-2. Removes parcels with missing network labels.
-3. Collects timeseries files from folders A, B, and C.
-   - A and B are both included fully.
-   - C is included only when files are not already present in A or B.
+2. Removes parcels with missing network labels (e.g. cerebellum).
+3. Collects timeseries files
 4. Computes subject-level FC matrices.
 5. Computes mean within-network connectivity for each network.
 6. Saves results to a CSV.
@@ -35,7 +33,7 @@ ATLAS_PATH = Path(
 
 # supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_190526.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_230626.csv")
 
 EXPECTED_N_PARCELS = 456
 
@@ -396,7 +394,7 @@ def main() -> None:
         n_parcels = np.sum(network_labels_valid == network)
         print(f"{network}: {n_parcels} parcels")
 
-    files = glob("/Users/ga0034de/Desktop/timeseries_1905/*.tsv")
+    files = glob("/Users/ga0034de/Desktop/timeseries_2306/*.tsv")
 
     results = []
 

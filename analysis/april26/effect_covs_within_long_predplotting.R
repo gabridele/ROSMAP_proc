@@ -17,37 +17,20 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_conn_1905.csv")
-#check type of variable
-str(demos_withinconn)
-# Add binary SyN variable
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(
-#    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
-#  )
-#
-## Load diagnosis/session-specific variables
-#variables <- read_excel("variables_ses_specific_may26.xlsx") %>%
-#  select(sub_id, ses_id, dcfdx) %>%
-#  mutate(
-#    dcfdx = ifelse(dcfdx == ".", NA, dcfdx),
-#    dcfdx = case_when(
-#      dcfdx == "1" ~ "NCI",
-#      dcfdx == "2" ~ "MCI",
-#      dcfdx == "3" ~ "MCI",
-#      dcfdx == "4" ~ "AD",
-#      dcfdx == "5" ~ "AD",
-#      dcfdx == "6" ~ "other",
-#      TRUE ~ as.character(dcfdx)
-#    )
-#  )
-#
-## Merge diagnosis into main dataframe
-#demos_withinconn <- demos_withinconn %>%
-#  left_join(variables, by = c("sub_id", "ses_id"))
-#
-## Missingness check before filtering/modeling
-#print(colSums(is.na(demos_withinconn)))
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+
+demos_withinconn <- demos_withinconn %>%
+  mutate(
+    dcfdx = factor(
+      dcfdx,
+      levels = c("NCI", "MCI", "AD", "other"),
+      labels = c("NCI", "MCI", "AD", "other")
+    ))
+
+# drop rows that have other as dfcdx
+demos_withinconn <- demos_withinconn %>%
+  filter(dcfdx != "other") %>%
+  droplevels()
 
 # Network columns
 target_cols <- c(
@@ -58,56 +41,6 @@ target_cols <- c(
 fd_threshold <- 0.25
 
 # Type conversion
-
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(
-#    mean_FD = as.numeric(mean_FD),
-#    msex = factor(
-#      msex,
-#      levels = c(0, 1),
-#      labels = c("female", "male")
-#    ),
-#    site = factor(site),
-#    age_scandate = as.numeric(age_scandate),
-#    eyes = factor(eyes),
-#    dcfdx = factor(
-#      dcfdx,
-#      levels = c("NCI", "MCI", "AD", "other")
-#    ),
-#    syn_bin = factor(
-#      syn_bin,
-#      levels = c(0, 1),
-#      labels = c("not SyN", "SyN")
-#    )
-#  )
-
-## add scandate
-#demos_withinconn <- read_csv("age_atscan.csv") %>%
-#  separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
-#  select(c("ses_id", "sub_id", "scandate")) %>%
-#  right_join(demos_withinconn, by = c("sub_id", "ses_id"))
-#
-## make scandate format yyyymmdd into a datee
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(scandate = as.Date(as.character(scandate), format = "%Y%m%d"))
-#
-#demos_withinconn <- demos_withinconn %>%
-#  mutate(
-#    ses_num = as.numeric(str_extract(ses, "\\d+"))
-#  ) %>%
-#  mutate(sub = factor(sub))
-## compute years from baseline for each subject
-#
-#demos_withinconn <- demos_withinconn %>%
-#  group_by(sub_id) %>%
-#  mutate(
-#    baseline_date = scandate[which.min(ses_num)],
-#    years_from_baseline = interval(baseline_date, scandate) / years(1)
-#  ) %>%
-#  ungroup()
-#
-#save csv with new variables and type conversions
-#write.csv(demos_withinconn, "demos_withinconn_prepared_1905.csv", row.names = FALSE)
 
 network_colors <- c(
   "Vis" = "#9B59B6",

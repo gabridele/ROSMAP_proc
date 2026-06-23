@@ -17,7 +17,7 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("demos_conn_1905.csv")
+demos_betweenconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 # Add numeric session
 demos_betweenconn <- demos_betweenconn %>%
