@@ -1,6 +1,7 @@
 *.csv
 *.txt
 *.tsv
+*.npy
 *.xlsx
 *.pptx
 *.png

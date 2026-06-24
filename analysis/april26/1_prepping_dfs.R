@@ -158,7 +158,7 @@ demos_connectivity <- demos_connectivity %>%
     age_bl = as.numeric(age_bl),
     distortion_correction = factor(distortion_correction),
     eyes = factor(eyes),
-    dcfdx = factor(dcfdx),
+    dcfdx = factor(dcfdx, levels = c("NCI", "MCI", "AD", "other")),
     syn_bin = factor(
       syn_bin,
       levels = c(0, 1),

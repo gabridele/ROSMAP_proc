@@ -12,7 +12,7 @@ library(lmerTest)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_conn_1905.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
 
 demos_withinconn <- demos_withinconn %>%
   mutate(

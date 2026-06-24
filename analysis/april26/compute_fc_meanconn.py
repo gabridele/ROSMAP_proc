@@ -16,8 +16,8 @@ Output:
     NB: Some networks may get Nan mean within connectivity because there was no coverage for all the parcels in that network. This happens specifically for the limbic network, mostly due to dropout.
 """
 
+from re import split
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 from glob import glob
@@ -245,22 +245,23 @@ def load_and_filter_timeseries(
 
     return ts
 
-
-def compute_fc_matrix(timeseries: np.ndarray) -> np.ndarray:
+def compute_fc_matrix(timeseries: np.ndarray, timeseries_file: str | Path) -> np.ndarray:
     """
     Compute parcel-by-parcel functional connectivity matrix.
-
-    Parameters
-    ----------
-    timeseries : np.ndarray
-        Timeseries array with shape timepoints x parcels.
-
-    Returns
-    -------
-    np.ndarray
-        Pearson correlation matrix with shape parcels x parcels.
+    Saves the matrix in a folder called fc_matrices_456.
     """
-    return np.corrcoef(timeseries, rowvar=False)
+    timeseries_file = Path(timeseries_file)
+
+    output_dir = Path(".") / "fc_matrices_456"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_stem = "_".join(timeseries_file.name.split("_")[:2])
+    output_file = output_dir / f"{output_stem}_fc_matrix.npy"
+
+    fc_matrix = np.corrcoef(timeseries, rowvar=False)
+    np.save(output_file, fc_matrix)
+
+    return fc_matrix
 
 
 def compute_mean_within_network(
@@ -374,7 +375,7 @@ def compute_mean_between_network(
 
 def main() -> None:
     """
-    Run the full within-network connectivity pipeline.
+    Run the full within and between network connectivity pipeline.
     """
     network_labels = load_network_labels(ATLAS_PATH)
 
@@ -415,7 +416,7 @@ def main() -> None:
                 f"but atlas labels have {len(network_labels_valid)} parcels."
             )
 
-        fc = compute_fc_matrix(ts)
+        fc = compute_fc_matrix(ts, file_path)
 
         print(f"  FC shape after filtering: {fc.shape}")
 
