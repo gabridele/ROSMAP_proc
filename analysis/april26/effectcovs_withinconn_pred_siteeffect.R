@@ -15,7 +15,7 @@ library(tibble)
 # 1. Load data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
 
 print(colSums(is.na(demos_withinconn)))
 
@@ -113,10 +113,10 @@ get_conditional_predicted_data <- function(data_long) {
     
     model <- lmer(
       model_formula,
-      data = df_net,
+      data = df_net, 
       REML = FALSE
     )
-    
+    print((summary(model)))
     df_net %>%
       mutate(
         predicted_conditional = predict(model, re.form = NULL)
@@ -452,7 +452,7 @@ library(readxl)
 # 1. Load data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
 
 # Drop other diagnosis group if needed
 demos_withinconn <- demos_withinconn %>%
@@ -643,14 +643,14 @@ library(emmeans)
 # 1. Load data
 # ============================================================
 
-demos_withinconn <- read.csv("demos_conn_2505.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
 
 # Drop other diagnosis group if needed
 demos_withinconn <- demos_withinconn %>%
   filter(!is.na(dcfdx), dcfdx != "other")
 
 print(colSums(is.na(demos_withinconn)))
-
+ 
 # ============================================================
 # 2. Settings
 # ============================================================

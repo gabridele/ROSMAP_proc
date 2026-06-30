@@ -17,7 +17,7 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
@@ -118,7 +118,7 @@ get_predicted_data <- function(data_long) {
       data = df_net,
       control = lmerControl(optimizer = "bobyqa")
     )
-    
+    print(summary(model))
     df_net %>%
       mutate(
         predicted_conn = fitted(model)

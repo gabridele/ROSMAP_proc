@@ -10,7 +10,7 @@ library(ggeffects)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
 
 # Missingness sanity check
 print(colSums(is.na(demos_withinconn)))

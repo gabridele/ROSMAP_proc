@@ -43,7 +43,7 @@ other_demos <- other_demos %>%
 rosmap_demos <- read_excel("sheets/ROSMAP_demos2026.xlsx")
 
 rosmap_demos <- rosmap_demos %>%
-  select(c("projid", "study", "msex", "educ", "age_bl", "dcfdx_bl"))
+  select(c("projid", "study", "msex", "educ", "age_bl", "dcfdx_bl", "dcfdx_lv"))
 # filter only ROS and MAP studies
 
 # 0 pad to 8 digits projid
@@ -108,7 +108,7 @@ print(study_count)
 #### loading of connectivity data
 # ================================
 
-demos_0426 <- read_csv("sheets/v1.3/mean_connectivity_230626.csv")
+demos_0426 <- read_csv("sheets/v1.3/mean_connectivity_240626.csv")
 
 demos_connectivity <- left_join(merged_df, demos_0426, by = c("sub_ses" = "timeseries"))
 
@@ -133,6 +133,26 @@ variables <- variables %>%
     dcfdx == "5" ~ "AD",
     dcfdx == "6" ~ "other",
     TRUE ~ as.character(dcfdx)
+  )) 
+
+demos_connectivity <- demos_connectivity %>%
+  mutate(dcfdx_bl = case_when(
+    dcfdx_bl == "1" ~ "NCI",
+    dcfdx_bl == "2" ~ "MCI",
+    dcfdx_bl == "3" ~ "MCI",
+    dcfdx_bl == "4" ~ "AD",
+    dcfdx_bl == "5" ~ "AD",
+    dcfdx_bl == "6" ~ "other",
+    TRUE ~ as.character(dcfdx_bl)
+  )) %>%
+  mutate(dcfdx_lv = case_when(
+    dcfdx_lv == "1" ~ "NCI",
+    dcfdx_lv == "2" ~ "MCI",
+    dcfdx_lv == "3" ~ "MCI",
+    dcfdx_lv == "4" ~ "AD",
+    dcfdx_lv == "5" ~ "AD",
+    dcfdx_lv == "6" ~ "other",
+    TRUE ~ as.character(dcfdx_lv)
   ))
 
 # merge the two dfs by sub_id and ses_id 
@@ -206,3 +226,53 @@ demos_connectivity <- demos_connectivity %>%
   mutate(dcfdx = factor(dcfdx, levels = c("NCI", "MCI", "AD")))
 
 write_csv(demos_connectivity, paste0("sheets/v1.3/demos_conn_", today_date, ".csv"))
+
+# print number of sub_id 
+demos_connectivity %>%
+  summarise(n_subs = n_distinct(sub_id), n_ses = n_distinct(ses_id)) %>%
+  print()
+
+# add age_lv which is the last age_scandate for each subject to the summary table
+demos_connectivity <- demos_connectivity %>%
+  group_by(sub_id) %>%
+  mutate(age_lv = last(age_scandate)) %>%
+  mutate(dcfdx_lv = last(dcfdx)) %>%
+  ungroup()
+
+summary_tbl <- demos_connectivity %>%
+  arrange(sub_id, ses_id) %>%
+  group_by(sub_id) %>% 
+  summarise(
+    age_bl = first(age_bl),
+    age_lv = last(age_scandate),
+    sex = first(msex),
+    education = first(educ),
+    dcfdx_lv = last(dcfdx),
+    .groups = "drop"
+  ) %>%
+  summarise(
+    N = n(),
+    `Age BL (SD)` = sprintf("%.1f (%.1f)", mean(age_bl, na.rm = TRUE), sd(age_bl, na.rm = TRUE)),
+    `Age LV (SD)` = sprintf("%.1f (%.1f)", mean(age_lv, na.rm = TRUE), sd(age_lv, na.rm = TRUE)),
+    `% Female` = sprintf("%.1f", mean(sex %in% c("Female", "F", "female"), na.rm = TRUE) * 100),
+    `Education (SD)` = sprintf("%.1f (%.1f)", mean(education, na.rm = TRUE), sd(education, na.rm = TRUE)),
+    `%MCI LV` = sprintf("%.1f", mean(dcfdx_lv == "MCI", na.rm = TRUE) * 100),
+    `%AD LV` = sprintf("%.1f", mean(dcfdx_lv == "AD", na.rm = TRUE) * 100)
+  )
+
+summary_tbl
+
+
+
+summary_tbl_all_sessions <- demos_connectivity %>%
+  summarise(
+    N = n(),
+    `Age BL (SD)` = sprintf("%.1f (%.1f)", mean(age_bl, na.rm = TRUE), sd(age_bl, na.rm = TRUE)),
+    `Age LV (SD)` = sprintf("%.1f (%.1f)", mean(age_lv, na.rm = TRUE), sd(age_lv, na.rm = TRUE)),
+    `% Female` = sprintf("%.1f", mean(msex %in% c("Female", "F", "female"), na.rm = TRUE) * 100),
+    `Education (SD)` = sprintf("%.1f (%.1f)", mean(educ, na.rm = TRUE), sd(educ, na.rm = TRUE)),
+    `%MCI LV` = sprintf("%.1f", mean(dcfdx_lv == "MCI", na.rm = TRUE) * 100),
+    `%AD LV` = sprintf("%.1f", mean(dcfdx_lv == "AD", na.rm = TRUE) * 100)
+  )
+
+summary_tbl_all_sessions
