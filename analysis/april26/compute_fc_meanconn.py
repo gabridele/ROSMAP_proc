@@ -27,15 +27,14 @@ from glob import glob
 # =============================================================================
 
 ATLAS_PATH = Path(
-    "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/"
-    "atlas-4S456Parcels/atlas-4S456Parcels_dseg.tsv"
+    "~/Desktop/atlas-Schaefer400TianS2Cereb-space-MNI152NLin6Asym/atlas-Schaefer400TianS2Cereb_dseg.tsv"
 )
 
 # supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity_230626.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity442_130726.csv")
 
-EXPECTED_N_PARCELS = 456
+EXPECTED_N_PARCELS = 442
 
 # Set to False if you want raw, untransformed correlations.
 USE_FISHER_Z = True
@@ -370,6 +369,55 @@ def compute_mean_between_network(
     return np.nanmean(edge_values)
 
 # =============================================================================
+# Avg connectivity matrix
+# =============================================================================
+from typing import Iterable, Union, Sequence
+
+ArrayLike = Union[str, Path, np.ndarray]
+
+def average_corr_matrices_fisher_z(
+    mats: Sequence[ArrayLike],
+    clip: float = 0.999999,
+) -> np.ndarray:
+    """
+    Average correlation matrices using Fisher z-transform.
+
+    Parameters
+    ----------
+    mats : sequence of np.ndarray or .npy file paths
+        Each item must be a square correlation matrix with values in [-1, 1].
+    clip : float
+        Values are clipped to [-clip, clip] before arctanh to avoid infinities.
+
+    Returns
+    -------
+    np.ndarray
+        Fisher-z averaged correlation matrix, same shape as inputs.
+    """
+    arrays = []
+    for m in mats:
+        arr = np.load(m) if isinstance(m, (str, Path)) else np.asarray(m)
+        if arr.ndim != 2 or arr.shape[0] != arr.shape[1]:
+            raise ValueError("Each input must be a square 2D matrix.")
+        arrays.append(arr)
+
+    stack = np.stack(arrays, axis=0)
+
+    # Fisher z transform
+    stack = np.clip(stack, -clip, clip)
+    z = np.arctanh(stack)
+
+    # Average in z-space
+    z_mean = np.nanmean(z, axis=0)
+
+    # Back-transform to correlation space
+    avg_corr = np.tanh(z_mean)
+
+    # Keep diagonal at 1.0
+    np.fill_diagonal(avg_corr, 1.0)
+    return avg_corr
+
+# =============================================================================
 # Main workflow
 # =============================================================================
 
@@ -395,7 +443,7 @@ def main() -> None:
         n_parcels = np.sum(network_labels_valid == network)
         print(f"{network}: {n_parcels} parcels")
 
-    files = glob("/Users/ga0034de/Desktop/timeseries_2306/*.tsv")
+    files = glob("/Users/ga0034de/Desktop/extracted_ts_customgroup/*.tsv")
 
     results = []
 
@@ -447,6 +495,10 @@ def main() -> None:
 
     output_df = pd.DataFrame(results)
     output_df.to_csv(OUTPUT_CSV, index=False)
+
+    fc_submatrices = glob("/Users/ga0034de/Desktop/fc_matrices_442/*_fc_matrix.npy")
+    avg_fc_matrix = average_corr_matrices_fisher_z(fc_submatrices)
+    np.save("/Users/ga0034de/Desktop/fc_matrices_442/avg_fc_matrix.npy", avg_fc_matrix)
 
     print("\n--- Done ---")
     print(f"Fisher z used: {USE_FISHER_Z}")
