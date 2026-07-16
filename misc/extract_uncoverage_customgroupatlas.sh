@@ -21,7 +21,14 @@ extract_ts() {
     echo "##########################"
 
     echo "Subject ID: $sub_ses"
+    mkdir -p "$outdir"
+    output="$outdir/${sub_ses}_task-rest_space-MNI152NLin6Asym_seg-Schaefer400TianS2Cereb17Networks_timeseries_desc-nocoverage.tsv"
 
+    #skip if output file already exists
+    if [[ -f "$output" ]]; then
+        echo "Output file already exists, skipping: $output"
+        return 0
+    fi
     if [[ ! -f "$LABELS" ]]; then
         echo "ERROR: Missing labels file: $LABELS" >&2
         return 1
