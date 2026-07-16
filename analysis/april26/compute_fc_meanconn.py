@@ -27,14 +27,14 @@ from glob import glob
 # =============================================================================
 
 ATLAS_PATH = Path(
-    "~/Desktop/atlas-Schaefer400TianS2Cereb-space-MNI152NLin6Asym/atlas-Schaefer400TianS2Cereb_dseg.tsv"
+    "/Users/ga0034de/Desktop/atlas-4S656Parcels/atlas-4S656Parcels_dseg.tsv"
 )
 
 # supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/mean_connectivity442_130726.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/atlas_mean_connectivity656_150726.csv")
 
-EXPECTED_N_PARCELS = 442
+EXPECTED_N_PARCELS = 656
 
 # Set to False if you want raw, untransformed correlations.
 USE_FISHER_Z = True
@@ -251,7 +251,7 @@ def compute_fc_matrix(timeseries: np.ndarray, timeseries_file: str | Path) -> np
     """
     timeseries_file = Path(timeseries_file)
 
-    output_dir = Path(".") / "fc_matrices_456"
+    output_dir = Path(".") / "xcpd_600parcels"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_stem = "_".join(timeseries_file.name.split("_")[:2])
@@ -443,7 +443,7 @@ def main() -> None:
         n_parcels = np.sum(network_labels_valid == network)
         print(f"{network}: {n_parcels} parcels")
 
-    files = glob("/Users/ga0034de/Desktop/extracted_ts_customgroup/*.tsv")
+    files = glob("/Users/ga0034de/Desktop/ts_656/*.tsv")
 
     results = []
 
@@ -496,9 +496,9 @@ def main() -> None:
     output_df = pd.DataFrame(results)
     output_df.to_csv(OUTPUT_CSV, index=False)
 
-    fc_submatrices = glob("/Users/ga0034de/Desktop/fc_matrices_442/*_fc_matrix.npy")
+    fc_submatrices = glob("/Users/ga0034de/xcpd_600parcels/*_fc_matrix.npy")
     avg_fc_matrix = average_corr_matrices_fisher_z(fc_submatrices)
-    np.save("/Users/ga0034de/Desktop/fc_matrices_442/avg_fc_matrix.npy", avg_fc_matrix)
+    np.save("/Users/ga0034de/xcpd_600parcels/avg_fc_matrix.npy", avg_fc_matrix)
 
     print("\n--- Done ---")
     print(f"Fisher z used: {USE_FISHER_Z}")
