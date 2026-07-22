@@ -126,7 +126,28 @@ custom_avg_fc <- np$load("/Users/ga0034de/custom_atlas_fc_matrices_442/customatl
 individ_avg_fc <- np$load("/Users/ga0034de/individatlas_fc_matrices_442/individuatlas400_avg_fc_matrix.npy", allow_pickle = TRUE)
 xcpd_avg_fc600 <- np$load("/Users/ga0034de/xcpd_600parcels/600avg_fc_matrix.npy", allow_pickle = TRUE)
 
-grad_list_individ <- get_gradients(connectome_ests = list(individ_avg_fc),
+#site_wise
+bnk400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg_bnk_fc_matrix.npy", allow_pickle = TRUE)
+uc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg_uc_fc_matrix.npy", allow_pickle = TRUE)
+mg400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg_mg_fc_matrix.npy", allow_pickle = TRUE)
+rirc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg_rirc_fc_matrix.npy", allow_pickle = TRUE)
+
+bnk600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/bnk/avg_bnk_fc_matrix.npy", allow_pickle = TRUE)
+uc600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/uc/avg_uc_fc_matrix.npy", allow_pickle = TRUE)
+mg600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/mg/avg_mg_fc_matrix.npy", allow_pickle = TRUE)
+rirc600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/rirc/avg_rirc_fc_matrix.npy", allow_pickle = TRUE)
+
+bnk400custom <- np$load("/Users/ga0034de/Desktop/extracted_ts_customgroup/site_wise/FC/bnk/avg_fc_matrix.npy", allow_pickle = TRUE)
+uc400custom <- np$load("/Users/ga0034de/Desktop/extracted_ts_customgroup/site_wise/FC/uc/avg_fc_matrix.npy", allow_pickle = TRUE)
+mg400custom <- np$load("/Users/ga0034de/Desktop/extracted_ts_customgroup/site_wise/FC/mg/avg_fc_matrix.npy", allow_pickle = TRUE)
+rirc400custom <- np$load("/Users/ga0034de/Desktop/extracted_ts_customgroup/site_wise/FC/rirc/avg_fc_matrix.npy", allow_pickle = TRUE)
+
+bnk400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/bnk/avg_fc_matrix.npy", allow_pickle = TRUE)
+uc400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/uc/avg_fc_matrix.npy", allow_pickle = TRUE)
+mg400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/mg/avg_fc_matrix.npy", allow_pickle = TRUE)
+rirc400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/rirc/avg_fc_matrix.npy", allow_pickle = TRUE)
+
+grad_list_individ <- get_gradients(connectome_ests = list(bnk400invid = bnk400invid, uc400invid = uc400invid, mg400invid = mg400invid, rirc400invid = rirc400invid),
                                 reference_gradients = marg_gradients,
                                 n_gradients = c(1,2,3),
                                 threshold = 0.0,
@@ -146,7 +167,7 @@ grad_list_individ <- get_gradients(connectome_ests = list(individ_avg_fc),
   varexp_df <- c()
   for (i in 1:nrow(params)) {
     param_i <- params[i, ]
-    grad_list <- get_gradients(connectome_ests = list(custom_avg_fc),
+    grad_list <- get_gradients(connectome_ests = list(xcpd600 = xcpd_avg_fc600),
                                n_gradients = c(1,2,3),
                                threshold = param_i$threshold,
                                similarity_method = param_i$sim_method,

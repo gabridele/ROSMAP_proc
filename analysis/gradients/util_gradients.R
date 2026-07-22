@@ -82,8 +82,8 @@ align_gradients <- function(original, derived){
   return(derived)
 }
 
-GRADIENT_LIMITS <- c(-3, 3)
-GRADIENT_BREAKS <- seq(-3, 3, by = 1)
+GRADIENT_LIMITS <- c(-2, 2)
+GRADIENT_BREAKS <- seq(-2, 2, by = 1)
 
 gradient_color_scale <- function() {
   scale_fill_viridis_c(
@@ -291,8 +291,8 @@ get_gradients <- function(connectome_ests,
           scale_fill_viridis_c(
           option = "viridis",
           direction = 1,
-          begin = -2,
-          end = 2,
+          begin = 0,
+          end = 1,
           name = "Gradient value",
           na.value = "grey85"
         )
