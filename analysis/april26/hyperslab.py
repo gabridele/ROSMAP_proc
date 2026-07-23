@@ -414,31 +414,30 @@ def main():
     customdata_1 = make_customdata(filenames_1, n_j)
     customdata_2 = make_customdata(filenames_2, n_j)
 
-    # ----- RGB overlap hyperslab -----
-    H1n = normalize_to_range(H1, vmin, vmax)
-    H2n = normalize_to_range(H2, vmin, vmax)
+    # # ----- RGB overlap hyperslab -----
+    # H1n = normalize_to_range(H1, vmin, vmax)
+    # H2n = normalize_to_range(H2, vmin, vmax)
 
-    # Dataset 1, e.g. BBR, is green
-    # Dataset 2, e.g. no-BBR, is magenta
-    rgb = np.zeros((H1.shape[0], H1.shape[1], 3), dtype=float)
-    rgb[:, :, 0] = H2n  # red channel: dataset 2
-    rgb[:, :, 1] = H1n  # green channel: dataset 1
-    rgb[:, :, 2] = H2n  # blue channel: dataset 2
+    # # Dataset 1, e.g. BBR, is green
+    # # Dataset 2, e.g. no-BBR, is magenta
+    # rgb = np.zeros((H1.shape[0], H1.shape[1], 3), dtype=float)
+    # rgb[:, :, 0] = H2n  # red channel: dataset 2
+    # rgb[:, :, 1] = H1n  # green channel: dataset 1
+    # rgb[:, :, 2] = H2n  # blue channel: dataset 2
 
-    rgb_uint8 = (rgb * 255).astype(np.uint8)
+    # rgb_uint8 = (rgb * 255).astype(np.uint8)
     # -------------------------------
 
     fig = make_subplots(
         rows=1,
-        cols=3,
+        cols=2,
         subplot_titles=(
             f"{args.dataset1_label} hyperslab + {args.dataset2_label} percentiles",
             f"{args.dataset2_label} hyperslab + {args.dataset1_label} percentiles",
-            f"Overlap: {args.dataset1_label}=green, {args.dataset2_label}=magenta"
         ),
         shared_yaxes=True,
-        horizontal_spacing=0.05,
-        column_widths=[0.34, 0.34, 0.32]
+        horizontal_spacing=0.06,
+        column_widths=[0.5, 0.5]
     )
 
     fig.add_trace(
@@ -511,20 +510,20 @@ def main():
         line_color="black"
     )
     
-    fig.add_trace(
-        go.Image(
-            z=rgb_uint8,
-            customdata=customdata_1,
-            hovertemplate=(
-                "Overlap view<br>"
-                "Image index: %{customdata[0]}<br>"
-                "Filename: %{customdata[1]}<br>"
-                "Voxel j: %{customdata[2]}<extra></extra>"
-            )
-        ),
-        row=1,
-        col=3
-    )
+    # fig.add_trace(
+    #     go.Image(
+    #         z=rgb_uint8,
+    #         customdata=customdata_1,
+    #         hovertemplate=(
+    #             "Overlap view<br>"
+    #             "Image index: %{customdata[0]}<br>"
+    #             "Filename: %{customdata[1]}<br>"
+    #             "Voxel j: %{customdata[2]}<extra></extra>"
+    #         )
+    #     ),
+    #     row=1,
+    #     col=3
+    # )
     fig.update_layout(
         title=(
             f"Hyperslab percentile comparison: "
@@ -551,7 +550,7 @@ def main():
 
     fig.update_xaxes(title_text="Voxel coordinate j", row=1, col=1)
     fig.update_xaxes(title_text="Voxel coordinate j", row=1, col=2)
-    fig.update_xaxes(title_text="Voxel coordinate j", row=1, col=3)
+    #fig.update_xaxes(title_text="Voxel coordinate j", row=1, col=3)
     fig.update_yaxes(title_text="EPI image index", row=1, col=1)
 
     fig.write_html(args.output)
