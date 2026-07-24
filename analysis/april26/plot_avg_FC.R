@@ -90,10 +90,7 @@ plot_data$matrix <- factor(
 )
 
 # Use the same symmetric colour limits for every matrix
-colour_limit <- 0.6
-
-# For correlation matrices, you can instead use:
-# colour_limit <- 1
+colour_limit <- 1
 
 # ------------------------------------------------------------
 # 4. Plot the four matrices
@@ -185,7 +182,13 @@ for (i in seq_along(matrices)) {
 
 # Set TRUE to exclude diagonal values from the summary statistics
 exclude_diagonal <- TRUE
-
+icefire <- c(
+  "#00feff", "#22628e", "#ae0038", "#f3001d", "#ffa200"
+)
+colour_at <- c(
+  seq(-1, 0, length.out = 6),
+  seq(0, 1, length.out = 6)[-1]
+)
 for (i in seq_along(matrices)) {
 
   current_matrix <- matrices[[i]]
@@ -231,16 +234,16 @@ for (i in seq_along(matrices)) {
     geom_tile() +
     scale_y_reverse(expand = c(0, 0)) +
     scale_x_continuous(expand = c(0, 0)) +
-    scale_fill_gradient2(
-      low = "#2166AC",
-      mid = "white",
-      high = "#B2182B",
-      midpoint = 0,
-      limits = c(-colour_limit, colour_limit),
-      oob = scales::squish,
-      na.value = "grey90",
-      name = "Connectivity"
-    ) +
+    scale_fill_gradientn(
+    colours = icefire,
+    values = scales::rescale(
+      colour_at,
+      from = c(-1, 1)
+    ),
+    limits = c(-1, 1),
+    breaks = c(-1, 0, 1),
+    name = "Correlation"
+  ) +
     coord_fixed() +
     labs(
       title = paste(
