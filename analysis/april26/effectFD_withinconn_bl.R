@@ -10,7 +10,7 @@ library(ggeffects)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
+demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv")
 
 # Missingness sanity check
 print(colSums(is.na(demos_withinconn)))

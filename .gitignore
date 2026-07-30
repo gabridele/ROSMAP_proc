@@ -6,6 +6,10 @@
 *.pptx
 *.png
 *.npz
+*.ai
+*.svg
+*.pdf
+*.tmp
 .DS_Store
 analysis/april26/.DS_Store
 analysis/april26/.DS_Store

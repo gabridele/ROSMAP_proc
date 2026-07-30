@@ -17,7 +17,7 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
+demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv")
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
@@ -363,9 +363,9 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
   print(p)
   
   ggsave(
-    filename = paste0("withinconn_predicted_", covariate, "_", file_suffix, ".png"),
+    filename = paste0("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/", "withinconn_predicted_", covariate, "_", file_suffix, ".pdf"),
     plot = p,
-    width = 13,
+    width = 15,
     height = 9,
     dpi = 300
   )
@@ -447,4 +447,4 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 
-write.csv(all_pairwise_results_table, "all_pairwise_results_withinconn_covs_long.csv", row.names = FALSE)
+write.csv(all_pairwise_results_table, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/all_pairwise_results_withinconn_covs_long.csv", row.names = FALSE)

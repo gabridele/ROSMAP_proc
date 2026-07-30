@@ -21,6 +21,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from glob import glob
+from typing import Union
+from collections.abc import Sequence
 
 # =============================================================================
 # Configuration
@@ -31,7 +33,7 @@ ATLAS_PATH = Path(
 
 # supposedly all same input folder
 
-OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/atlas_mean_connectivity656_150726.csv")
+OUTPUT_CSV = Path("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/atlas_mean_connectivity456_150726.csv")
 
 EXPECTED_N_PARCELS = 456
 
@@ -204,7 +206,6 @@ def extract_sub_ses_id(file_path: Path) -> str:
 
 def load_and_filter_timeseries(
     file_path: Path,
-    valid_mask: np.ndarray,
     expected_n_parcels: int,
 ) -> np.ndarray:
     """
@@ -239,7 +240,7 @@ def load_and_filter_timeseries(
             f"expected {expected_n_parcels}."
         )
 
-    ts = ts[:, valid_mask]
+    #ts = ts[:, valid_mask]
 
     return ts
 
@@ -259,11 +260,12 @@ def compute_fc_matrix(timeseries: np.ndarray, timeseries_file: str | Path) -> np
     fc_matrix = np.corrcoef(timeseries, rowvar=False)
     np.save(output_file, fc_matrix)
 
-    return fc_matrix
+    return fc_matrix, output_dir
 
 
 def compute_mean_within_network(
     fc: np.ndarray,
+    valid_mask: np.ndarray,
     network_labels: np.ndarray,
     network: str,
     use_fisher_z: bool = True,
@@ -295,7 +297,8 @@ def compute_mean_within_network(
 
     if len(idx) < 2:
         return np.nan
-
+    # apply mask to fc, non cortical structures are not part of 7 networks
+    fc = fc[np.ix_(valid_mask, valid_mask)]
     submat = fc[np.ix_(idx, idx)]
 
     # Keep only off-diagonal values.
@@ -319,6 +322,7 @@ def compute_mean_within_network(
 #### compute between-network connectivity
 def compute_mean_between_network(
     fc: np.ndarray,
+    valid_mask: np.ndarray,
     network_labels: np.ndarray,
     network_a: str,
     network_b: str,
@@ -356,6 +360,7 @@ def compute_mean_between_network(
     if len(idx_a) == 0 or len(idx_b) == 0:
         return np.nan
 
+    fc = fc[np.ix_(valid_mask, valid_mask)]
     submat = fc[np.ix_(idx_a, idx_b)]
     edge_values = submat.flatten()
     edge_values = pd.to_numeric(edge_values, errors="coerce")
@@ -370,7 +375,7 @@ def compute_mean_between_network(
 # =============================================================================
 # Avg connectivity matrix
 # =============================================================================
-from typing import Iterable, Union, Sequence
+
 
 ArrayLike = Union[str, Path, np.ndarray]
 
@@ -453,17 +458,16 @@ def main() -> None:
 
         ts = load_and_filter_timeseries(
             file_path=file_path,
-            valid_mask=valid_mask,
             expected_n_parcels=EXPECTED_N_PARCELS,
         )
 
-        if ts.shape[1] != len(network_labels_valid):
-            raise ValueError(
-                f"After filtering, {file_path} has {ts.shape[1]} parcels, "
-                f"but atlas labels have {len(network_labels_valid)} parcels."
-            )
+        # if ts.shape[1] != len(network_labels_valid):
+        #     raise ValueError(
+        #         f"After filtering, {file_path} has {ts.shape[1]} parcels, "
+        #         f"but atlas labels have {len(network_labels_valid)} parcels."
+        #     )
 
-        fc = compute_fc_matrix(ts, file_path)
+        fc, output_dir = compute_fc_matrix(ts, file_path)
 
         print(f"  FC shape after filtering: {fc.shape}")
 
@@ -474,6 +478,7 @@ def main() -> None:
         for network in networks:
             row[network] = compute_mean_within_network(
                 fc=fc,
+                valid_mask=valid_mask,
                 network_labels=network_labels_valid,
                 network=network,
                 use_fisher_z=USE_FISHER_Z,
@@ -484,6 +489,7 @@ def main() -> None:
                 network_b = networks[j]
                 row[f"{network_a}_to_{network_b}"] = compute_mean_between_network(
                     fc=fc,
+                    valid_mask=valid_mask,
                     network_labels=network_labels_valid,
                     network_a=network_a,
                     network_b=network_b,
@@ -495,9 +501,9 @@ def main() -> None:
     output_df = pd.DataFrame(results)
     output_df.to_csv(OUTPUT_CSV, index=False)
 
-    fc_submatrices = glob("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/*_fc_matrix.npy")
+    fc_submatrices = glob(f"{output_dir}/*_fc_matrix.npy")
     avg_fc_matrix = average_corr_matrices_fisher_z(fc_submatrices)
-    np.save("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/avg_fc_matrix.npy", avg_fc_matrix)
+    np.save(f"{output_dir}/avg_fc_matrix.npy", avg_fc_matrix)
 
     print("\n--- Done ---")
     print(f"Fisher z used: {USE_FISHER_Z}")

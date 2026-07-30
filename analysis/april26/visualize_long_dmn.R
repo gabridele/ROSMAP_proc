@@ -13,7 +13,24 @@ library(lubridate)
 # Load data and prepare long format
 # ===============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2406.csv")
+
+target_cols <- c(
+  "Vis", "SomMot", "DorsAttn",
+  "SalVentAttn", "Limbic", "Cont", "Default"
+)
+
+fd_threshold <- 0.25
+
+network_colors <- c(
+  "Vis" = "#9B59B6",
+  "SomMot" = "#6C8EBF",
+  "Default" = "#D36B78",
+  "Limbic" = "#C9D39A",
+  "DorsAttn" = "#3C8D2F",
+  "SalVentAttn" = "#C84CCF",
+  "Cont" = "#E5B53A"
+)
 
 make_long <- function(data) {
   data %>%
@@ -37,7 +54,7 @@ make_long <- function(data) {
     )
 }
 
-data_long <- make_long(demos_connectivity)
+data_long <- make_long(demos_withinconn)
 
 network_to_plot <- "Default"
 
@@ -55,7 +72,7 @@ site_cols <- c(
 # LMER fitted lines: pre-FD
 # ===============================================================
 
-data_long <- make_long(demos_connectivity)
+data_long <- make_long(demos_withinconn)
 
 network_to_plot <- "Default"
 
@@ -154,10 +171,10 @@ pred_dmn <- pred_dmn %>%
 # LMER fitted lines: post-FD, mean_FD < 0.25
 # ===============================================================
 
-demos_connectivity_postFD <- demos_connectivity %>%
+demos_withinconn_postFD <- demos_withinconn %>%
   filter(mean_FD < 0.25)
 
-data_long_postFD <- make_long(demos_connectivity_postFD)
+data_long_postFD <- make_long(demos_withinconn_postFD)
 
 network_to_plot <- "Default"
 
@@ -276,7 +293,7 @@ pred_dmn_postFD <- pred_dmn_postFD %>%
 # Plot model-predicted lines: pre-FD, colored by direction
 # ===============================================================
 
-ggplot(
+prefd_direction <- ggplot(
   pred_dmn,
   aes(
     x = years_from_baseline,
@@ -316,7 +333,7 @@ ggplot(
   labs(
     title = "Model-predicted DMN trajectories across time",
     subtitle = paste0(
-      "Flat = subject-specific fitted change between −",
+      "Flat = subject-specific fitted change between -",
       round(flat_threshold, 4),
       " and +",
       round(flat_threshold, 4),
@@ -327,6 +344,13 @@ ggplot(
     color = "Direction"
   )
 
+ggsave(
+  filename = "analysis/april26/plots/predicted_dmn_prefd_direction.pdf",
+  plot = prefd_direction,
+  width = 18,
+  height = 9,
+  dpi = 300
+)
 # ===============================================================
 # Plot model-predicted lines: post-FD, colored by direction
 # ===============================================================

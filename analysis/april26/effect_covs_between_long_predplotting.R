@@ -17,7 +17,7 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_betweenconn <- read.csv("analysis/april26/sheets/v1.3/demos_conn_2807.csv")
 
 # Add numeric session
 demos_betweenconn <- demos_betweenconn %>%
@@ -556,4 +556,4 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 # save final table
-write_csv(all_pairwise_results_table, "all_pairwise_results_betweenconn_covs_long.csv")
+write_csv(all_pairwise_results_table, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/all_pairwise_results_betweenconn_covs_long.csv")

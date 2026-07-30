@@ -1,29 +1,22 @@
-# Install once
-install.packages(c("reticulate", "ggplot2", "scales"))
-
 library(reticulate)
 library(ggplot2)
+library(dplyr)
+library(readr)
 
 # Load NumPy
 np <- import("numpy", convert = TRUE)
 
 # ------------------------------------------------------------
-# 1. Paths to four averaged connectivity matrices
+# 1. Paths and matrix names
 # ------------------------------------------------------------
 
 files <- c(
-  "/Users/ga0034de/Desktop/BNKBBR_ts/bnkbbr_avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg/avg_bnk_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg/avg_uc_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg/avg_mg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg/avg_rirc_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/avg/avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/FD_filtered/avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/FD_filtered/avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/FD_filtered/avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/FD_filtered/avg_fc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/FD_filtered/avg_fc_matrix.npy"
-
+  "/Users/ga0034de/Desktop/BNKBBR_ts/FC/avg/avg_fc_bnkbbr_matrix.npy",
+  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg/avg_fc_bnk_matrix.npy",
+  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg/avg_fc_uc_matrix.npy",
+  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg/avg_fc_mg_matrix.npy",
+  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg/avg_fc_rirc_matrix.npy",
+  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/avg/avg_fc_matrix.npy"
 )
 
 matrix_names <- c(
@@ -32,20 +25,72 @@ matrix_names <- c(
   "UC",
   "MG",
   "RIRC",
-  "whole_dataset",
-  "FD_filtered",
-  "FD_filtered_BNK",
-  "FD_filtered_UC",
-  "FD_filtered_MG",
-  "FD_filtered_RIRC"
+  "whole_dataset"
 )
 
+if (length(files) != length(matrix_names)) {
+  stop("The number of files does not match the number of matrix names.")
+}
+
 # ------------------------------------------------------------
-# 2. Load and validate matrices
+# 2. Read network labels
+# ------------------------------------------------------------
+
+dseg_file <- paste0(
+  "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/",
+  "atlas-4S456Parcels/atlas-4S456Parcels_dseg.tsv"
+)
+
+dseg <- read_tsv(
+  dseg_file,
+  na = c("", "NA", "N/A", "n/a", "NaN"),
+  show_col_types = FALSE
+)
+
+required_columns <- c("network_label", "atlas_name")
+
+if (!all(required_columns %in% names(dseg))) {
+  stop(
+    "The dseg TSV must contain these columns: ",
+    paste(required_columns, collapse = ", ")
+  )
+}
+
+network <- dseg %>%
+  transmute(
+    network_label = na_if(
+      trimws(as.character(network_label)),
+      ""
+    ),
+    atlas_name = na_if(
+      trimws(as.character(atlas_name)),
+      ""
+    ),
+
+    # Use atlas_name when network_label is missing
+    plot_label = coalesce(
+      network_label,
+      atlas_name,
+      "Unlabelled"
+    )
+  ) %>%
+  pull(plot_label)
+
+# ------------------------------------------------------------
+# 3. Load and validate matrices
 # ------------------------------------------------------------
 
 matrices <- lapply(files, function(file) {
-  x <- np$load(file, allow_pickle = FALSE)
+
+  if (!file.exists(file)) {
+    stop("File not found: ", file)
+  }
+
+  x <- np$load(
+    file,
+    allow_pickle = FALSE
+  )
+
   x <- as.matrix(x)
 
   if (nrow(x) != ncol(x)) {
@@ -55,7 +100,7 @@ matrices <- lapply(files, function(file) {
   x
 })
 
-# Confirm that all matrices have identical dimensions
+# Confirm all matrices have identical dimensions
 matrix_dimensions <- vapply(
   matrices,
   function(x) paste(dim(x), collapse = "x"),
@@ -63,17 +108,111 @@ matrix_dimensions <- vapply(
 )
 
 if (length(unique(matrix_dimensions)) != 1) {
-  stop("The four matrices do not have matching dimensions.")
+  stop(
+    "Matrices do not have matching dimensions: ",
+    paste(unique(matrix_dimensions), collapse = ", ")
+  )
+}
+
+number_of_rois <- nrow(matrices[[1]])
+
+if (length(network) != number_of_rois) {
+  stop(
+    "The number of dseg rows does not match the matrix dimensions. ",
+    "Matrix has ",
+    number_of_rois,
+    " ROIs, but dseg contains ",
+    length(network),
+    " rows."
+  )
 }
 
 # ------------------------------------------------------------
-# 3. Convert matrices to long-format data
+# 4. Optionally group ROIs by network
+# ------------------------------------------------------------
+
+# TRUE:
+#   ROIs are reordered so that members of each network are adjacent.
+#
+# FALSE:
+#   Original atlas/dseg order is preserved.
+#
+# The same ordering is applied to rows and columns of every matrix.
+
+reorder_by_network <- FALSE
+
+if (reorder_by_network) {
+
+  # Preserve network order based on first appearance in dseg
+  network_factor <- factor(
+    network,
+    levels = unique(network)
+  )
+
+  roi_order <- order(network_factor)
+
+} else {
+
+  roi_order <- seq_len(number_of_rois)
+}
+
+network_plot_order <- network[roi_order]
+
+# Apply identical ordering to every connectivity matrix
+matrices <- lapply(
+  matrices,
+  function(x) x[roi_order, roi_order, drop = FALSE]
+)
+
+# ------------------------------------------------------------
+# 5. Find network block locations
+# ------------------------------------------------------------
+
+# rle() identifies consecutive blocks of identical labels
+network_runs <- rle(network_plot_order)
+
+network_blocks <- data.frame(
+  network = network_runs$values,
+  block_length = network_runs$lengths,
+  stringsAsFactors = FALSE
+)
+
+network_blocks$end <- cumsum(
+  network_blocks$block_length
+)
+
+network_blocks$start <- c(
+  1,
+  head(network_blocks$end, -1) + 1
+)
+
+# Position at which the network name is displayed
+network_blocks$midpoint <- (
+  network_blocks$start +
+    network_blocks$end
+) / 2
+
+# Lines are placed between adjacent network blocks
+network_boundaries <- head(
+  network_blocks$end,
+  -1
+) + 0.5
+
+# ------------------------------------------------------------
+# 6. Convert matrices to long format
 # ------------------------------------------------------------
 
 matrix_to_dataframe <- function(x, matrix_name) {
+
   data.frame(
-    row = rep(seq_len(nrow(x)), times = ncol(x)),
-    column = rep(seq_len(ncol(x)), each = nrow(x)),
+    row = rep(
+      seq_len(nrow(x)),
+      times = ncol(x)
+    ),
+    column = rep(
+      seq_len(ncol(x)),
+      each = nrow(x)
+    ),
     connectivity = as.vector(x),
     matrix = matrix_name
   )
@@ -81,7 +220,11 @@ matrix_to_dataframe <- function(x, matrix_name) {
 
 plot_data <- do.call(
   rbind,
-  Map(matrix_to_dataframe, matrices, matrix_names)
+  Map(
+    matrix_to_dataframe,
+    matrices,
+    matrix_names
+  )
 )
 
 plot_data$matrix <- factor(
@@ -89,106 +232,215 @@ plot_data$matrix <- factor(
   levels = matrix_names
 )
 
-# Use the same symmetric colour limits for every matrix
+# Symmetric colour limits for every matrix
 colour_limit <- 1
 
 # ------------------------------------------------------------
-# 4. Plot the four matrices
+# 7. Function for creating a labelled FC plot
 # ------------------------------------------------------------
 
-fc_plot <- ggplot(
-  plot_data,
-  aes(x = column, y = row, fill = connectivity)
-) +
-  geom_tile() +
-  facet_wrap(~matrix, ncol = 2) +
-  scale_y_reverse(expand = c(0, 0)) +
-  scale_x_continuous(expand = c(0, 0)) +
-  scale_fill_gradient2(
-    low = "#2166AC",
-    mid = "white",
-    high = "#B2182B",
-    midpoint = 0,
-    limits = c(-colour_limit, colour_limit),
-    oob = scales::squish,
-    na.value = "grey90",
-    name = "Connectivity"
-  ) +
-  coord_fixed() +
-  labs(
-    title = "Average Functional Connectivity Matrices",
-    x = "ROI",
-    y = "ROI"
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(
-    panel.grid = element_blank(),
-    strip.text = element_text(face = "bold"),
-    axis.text = element_blank(),
-    axis.ticks = element_blank()
-  )
+make_fc_plot <- function(
+    data,
+    title,
+    subtitle = NULL,
+    facet = FALSE,
+    axis_text_size = 7
+) {
 
-print(fc_plot)
-
-# # Save to file
-ggsave(
-  filename = "4sites_average_fc_matrices.png",
-  plot = fc_plot,
-  width = 10,
-  height = 8,
-  dpi = 300
-)
-
-# each figure one plot
-for (i in seq_along(matrices)) {
-  single_plot <- ggplot(
-    matrix_to_dataframe(matrices[[i]], matrix_names[i]),
-    aes(x = column, y = row, fill = connectivity)
+  p <- ggplot(
+    data,
+    aes(
+      x = column,
+      y = row,
+      fill = connectivity
+    )
   ) +
     geom_tile() +
-    scale_y_reverse(expand = c(0, 0)) +
-    scale_x_continuous(expand = c(0, 0)) +
+
+    # Vertical boundaries between networks
+    geom_vline(
+      xintercept = network_boundaries,
+      linewidth = 0.25,
+      colour = "black",
+      alpha = 0.7
+    ) +
+
+    # Horizontal boundaries between networks
+    geom_hline(
+      yintercept = network_boundaries,
+      linewidth = 0.25,
+      colour = "black",
+      alpha = 0.7
+    ) +
+
+    # Network labels along the top
+    scale_x_continuous(
+      position = "top",
+      breaks = network_blocks$midpoint,
+      labels = network_blocks$network,
+      expand = c(0, 0)
+    ) +
+
+    # Network labels along the left
+    scale_y_reverse(
+      breaks = network_blocks$midpoint,
+      labels = network_blocks$network,
+      expand = c(0, 0)
+    ) +
+
     scale_fill_gradient2(
       low = "#2166AC",
       mid = "white",
       high = "#B2182B",
       midpoint = 0,
-      limits = c(-colour_limit, colour_limit),
+      limits = c(
+        -colour_limit,
+        colour_limit
+      ),
       oob = scales::squish,
       na.value = "grey90",
       name = "Connectivity"
     ) +
-    coord_fixed() +
-    labs(
-      title = paste("Average Functional Connectivity Matrix -", matrix_names[i]),
-      x = "ROI",
-      y = "ROI"
+
+    coord_fixed(
+      clip = "off"
     ) +
-    theme_minimal(base_size = 12) +
+
+    labs(
+      title = title,
+      #subtitle = subtitle,
+      x = NULL,
+      y = NULL
+    ) +
+
+    theme_minimal(
+      base_size = 12
+    ) +
+
     theme(
       panel.grid = element_blank(),
-      axis.text = element_blank(),
-      axis.ticks = element_blank()
-    )
-    print(single_plot)
-  ggsave(
-    filename = paste0("average_fc_matrix_", matrix_names[i], ".png"),
-    plot = single_plot,
-    width = 6,
-    height = 5,
-    dpi = 300
-  )
-} 
 
-# Set TRUE to exclude diagonal values from the summary statistics
+      strip.text = element_text(
+        face = "bold"
+      ),
+
+      axis.ticks = element_blank(),
+
+      # Top network labels
+      axis.text.x.top = element_text(
+        size = axis_text_size,
+        angle = 45,
+        hjust = 0,
+        vjust = 0
+      ),
+
+      # Left network labels
+      axis.text.y.left = element_text(
+        size = axis_text_size,
+        hjust = 1
+      ),
+
+      plot.title = element_text(
+        face = "bold",
+        size = 14
+      ),
+
+      plot.subtitle = element_text(
+        size = 10,
+        margin = margin(b = 8)
+      ),
+
+      plot.margin = margin(
+        t = 15,
+        r = 15,
+        b = 10,
+        l = 15
+      )
+    )
+
+  if (facet) {
+    p <- p +
+      facet_wrap(
+        ~matrix,
+        ncol = 2
+      )
+  }
+
+  p
+}
+
+# ------------------------------------------------------------
+# 8. Faceted plot containing all matrices
+# ------------------------------------------------------------
+
+fc_plot <- make_fc_plot(
+  data = plot_data,
+  title = "Average Functional Connectivity Matrices",
+  facet = TRUE,
+  axis_text_size = 6
+)
+
+print(fc_plot)
+
+ggsave(
+  filename = "all_average_fc_matrices.svg",
+  plot = fc_plot,
+  width = 14,
+  height = 18,
+  dpi = 300,
+  bg = "white"
+)
+
+# ------------------------------------------------------------
+# 9. Save each matrix separately
+# ------------------------------------------------------------
+
+for (i in seq_along(matrices)) {
+
+  plot_data_i <- matrix_to_dataframe(
+    matrices[[i]],
+    matrix_names[i]
+  )
+
+  single_plot <- make_fc_plot(
+    data = plot_data_i,
+    title = paste(
+      "Average Functional Connectivity Matrix -",
+      matrix_names[i]
+    ),
+    facet = FALSE,
+    axis_text_size = 7
+  )
+
+  print(single_plot)
+
+  safe_name <- gsub(
+    pattern = "[^A-Za-z0-9_-]+",
+    replacement = "_",
+    x = matrix_names[i]
+  )
+
+  ggsave(
+    filename = paste0(
+      "average_fc_matrix_",
+      safe_name,
+      ".svg"
+    ),
+    plot = single_plot,
+    width = 9,
+    height = 8,
+    dpi = 300,
+    bg = "white"
+  )
+}
+
+# ------------------------------------------------------------
+# 10. Individual matrices with summary statistics
+# ------------------------------------------------------------
+
+# Set TRUE to exclude diagonal values from statistics
 exclude_diagonal <- TRUE
-icefire <- c(
-  "#00feff", "#22628e", "#ae0038", "#f3001d", "#ffa200"
-)
-colour_at <- c(
-  seq(-1, 0, length.out = 6),
-  seq(0, 1, length.out = 6)[-1]
-)
+
 for (i in seq_along(matrices)) {
 
   current_matrix <- matrices[[i]]
@@ -197,90 +449,155 @@ for (i in seq_along(matrices)) {
   stats_values <- current_matrix
 
   if (exclude_diagonal) {
-    diag(stats_values) <- NA
+    diag(stats_values) <- NA_real_
   }
 
   stats_values <- as.numeric(stats_values)
-  stats_values <- stats_values[is.finite(stats_values)]
 
-  # Calculate summary statistics
-  matrix_stats <- c(
-    Mean   = mean(stats_values),
-    SD     = sd(stats_values),
-    Min    = min(stats_values),
-    Max    = max(stats_values),
-    Median = median(stats_values)
-  )
+  stats_values <- stats_values[
+    is.finite(stats_values)
+  ]
 
-  # Text displayed on the plot
-  stats_text <- sprintf(
-    "Mean: %.3f   SD: %.3f   Min: %.3f   Max: %.3f   Median: %.3f",
-    matrix_stats["Mean"],
-    matrix_stats["SD"],
-    matrix_stats["Min"],
-    matrix_stats["Max"],
-    matrix_stats["Median"]
-  )
+  if (length(stats_values) == 0) {
+    warning(
+      "No finite values available for ",
+      matrix_names[i]
+    )
+
+    matrix_stats <- c(
+      Mean = NA_real_,
+      SD = NA_real_,
+      Min = NA_real_,
+      Max = NA_real_,
+      Median = NA_real_
+    )
+
+  } else {
+
+    matrix_stats <- c(
+      Mean = mean(stats_values),
+      SD = sd(stats_values),
+      Min = min(stats_values),
+      Max = max(stats_values),
+      Median = median(stats_values)
+    )
+  }
+
+  # stats_text <- sprintf(
+  #   paste0(
+  #     "Mean: %.3f   SD: %.3f   Min: %.3f   ",
+  #     "Max: %.3f   Median: %.3f"
+  #   ),
+  #   matrix_stats["Mean"],
+  #   matrix_stats["SD"],
+  #   matrix_stats["Min"],
+  #   matrix_stats["Max"],
+  #   matrix_stats["Median"]
+  # )
 
   plot_data_i <- matrix_to_dataframe(
     current_matrix,
     matrix_names[i]
   )
 
-  single_plot <- ggplot(
-    plot_data_i,
-    aes(x = column, y = row, fill = connectivity)
-  ) +
-    geom_tile() +
-    scale_y_reverse(expand = c(0, 0)) +
-    scale_x_continuous(expand = c(0, 0)) +
-    scale_fill_gradientn(
-    colours = icefire,
-    values = scales::rescale(
-      colour_at,
-      from = c(-1, 1)
+  single_plot <- make_fc_plot(
+    data = plot_data_i,
+    title = paste(
+      "Average Functional Connectivity Matrix -",
+      matrix_names[i]
     ),
-    limits = c(-1, 1),
-    breaks = c(-1, 0, 1),
-    name = "Correlation"
-  ) +
-    coord_fixed() +
-    labs(
-      title = paste(
-        "Average Functional Connectivity Matrix -",
-        matrix_names[i]
-      ),
-      subtitle = stats_text,
-      x = "ROI",
-      y = "ROI",
-      caption = if (exclude_diagonal) {
-        "Summary statistics exclude diagonal values."
-      } else {
-        "Summary statistics include diagonal values."
-      }
-    ) +
-    theme_minimal(base_size = 12) +
-    theme(
-      panel.grid = element_blank(),
-      axis.text = element_blank(),
-      axis.ticks = element_blank(),
-      plot.title = element_text(
-        face = "bold",
-        size = 14
-      ),
-      plot.subtitle = element_text(
-        size = 10,
-        margin = margin(b = 8)
-      ),
-      plot.caption = element_text(
-        size = 8,
-        hjust = 0
-      )
-    )
+    #subtitle = stats_text,
+    facet = FALSE,
+    axis_text_size = 7
+  )
 
   print(single_plot)
 
-  # Make filename safe if matrix names contain spaces
+  safe_name <- gsub(
+    pattern = "[^A-Za-z0-9_-]+",
+    replacement = "_",
+    x = matrix_names[i]
+  )
+
+  # ggsave(
+  #   filename = paste0(
+  #     "average_fc_matrix_",
+  #     safe_name,
+  #     "_with_statistics.svg"
+  #   ),
+  #   plot = single_plot,
+  #   width = 9,
+  #   height = 8,
+  #   dpi = 300,
+  #   bg = "white"
+  # )
+}
+
+# ------------------------------------------------------------
+# Save each matrix as a clean png
+# ------------------------------------------------------------
+
+for (i in seq_along(matrices)) {
+
+  plot_data_i <- matrix_to_dataframe(
+    matrices[[i]],
+    matrix_names[i]
+  )
+
+  matrix_plot <- ggplot(
+    plot_data_i,
+    aes(
+      x = column,
+      y = row,
+      fill = connectivity
+    )
+  ) +
+    geom_raster(
+      interpolate = FALSE
+    ) +
+
+    # Lines separating network blocks
+    geom_vline(
+      xintercept = network_boundaries,
+      colour = "black",
+      linewidth = 0.25
+    ) +
+    geom_hline(
+      yintercept = network_boundaries,
+      colour = "black",
+      linewidth = 0.25
+    ) +
+
+    scale_x_continuous(
+      expand = c(0, 0)
+    ) +
+    scale_y_reverse(
+      expand = c(0, 0)
+    ) +
+
+    scale_fill_gradient2(
+      low = "#2166AC",
+      mid = "white",
+      high = "#B2182B",
+      midpoint = 0,
+      limits = c(-colour_limit, colour_limit),
+      oob = scales::squish,
+      na.value = "grey90"
+    ) +
+
+    coord_fixed(
+      expand = FALSE,
+      clip = "off"
+    ) +
+
+    # Remove legend, labels, axes, title, and margins
+    guides(fill = "none") +
+    theme_void() +
+    theme(
+      legend.position = "none",
+      plot.margin = margin(0, 0, 0, 0, unit = "pt")
+    )
+
   safe_name <- gsub(
     pattern = "[^A-Za-z0-9_-]+",
     replacement = "_",
@@ -288,10 +605,15 @@ for (i in seq_along(matrices)) {
   )
 
   ggsave(
-    filename = paste0("average_fc_matrix_", safe_name, ".png"),
-    plot = single_plot,
-    width = 6,
-    height = 5,
-    dpi = 300
+    filename = paste0(
+      "average_fc_matrix_",
+      safe_name,
+      ".png"
+    ),
+    plot = matrix_plot,
+    width = 10,
+    height = 10,
+    units = "in",
+    bg = "transparent"
   )
 }

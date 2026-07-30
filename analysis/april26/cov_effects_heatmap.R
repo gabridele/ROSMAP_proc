@@ -9,7 +9,11 @@ library(purrr)
 # 1. Load baseline CSVs
 # ============================================================
 
-csvs_bl <- list.files(pattern = "covs_bl.csv")
+csvs_bl <- list.files(
+  path = "analysis/april26",
+  pattern = "all_pairwise_results_.*conn_covs_long.csv",
+  full.names = TRUE
+)
 
 covs_bl_list <- lapply(csvs_bl, read_csv)
 
@@ -27,6 +31,55 @@ print(unique(covs_bl_df$contrast))
 # ============================================================
 # 2. Prepare data
 # ============================================================
+get_shared_t_limits <- function(
+    df,
+    covariate_to_plot,
+    filter_statuses = c("pre", "post"),
+    padding = 0
+) {
+
+  # Allow the function to work before or after t_value is created
+  value_column <- if ("t_value" %in% names(df)) {
+    "t_value"
+  } else if ("statistic" %in% names(df)) {
+    "statistic"
+  } else {
+    stop("The data frame must contain either 't_value' or 'statistic'.")
+  }
+
+  t_values <- df %>%
+    filter(
+      covariate == covariate_to_plot,
+      filter_status %in% filter_statuses
+    ) %>%
+    pull(.data[[value_column]]) %>%
+    as.numeric()
+
+  # Remove NA, Inf and -Inf values
+  t_values <- t_values[is.finite(t_values)]
+
+  if (length(t_values) == 0) {
+    stop(
+      paste0(
+        "No finite t-values found for covariate = '",
+        covariate_to_plot,
+        "'."
+      )
+    )
+  }
+
+  # Symmetric limits centred on zero
+  max_abs_t <- max(abs(t_values))
+
+  # Avoid identical limits if every t-value is zero
+  if (max_abs_t == 0) {
+    max_abs_t <- 1
+  }
+
+  max_abs_t <- max_abs_t * (1 + padding)
+
+  c(-max_abs_t, max_abs_t)
+}
 
 stats_df <- covs_bl_df %>%
   mutate(
@@ -153,7 +206,13 @@ make_covariate_heatmap_grid_lower <- function(
   # ============================================================
   
   contrast_levels <- unique(c(effects_df$contrast1, effects_df$contrast2))
-  
+
+  if ("NCI" %in% contrast_levels) {
+    contrast_levels <- c(
+      "NCI",
+      setdiff(contrast_levels, "NCI")
+    )
+  }  
   effects_df <- effects_df %>%
     mutate(
       contrast1 = factor(contrast1, levels = contrast_levels),
@@ -634,3 +693,11 @@ p_dx_post_grid <- make_covariate_heatmap_grid_lower(
 
 print(p_dx_pre_grid)
 print(p_dx_post_grid)
+
+ggsave(
+  filename = "analysis/april26/heatmap_grid_dcfdx_pre.pdf",
+  plot = p_dx_pre_grid,
+  width = 10,
+  height = 6,
+  dpi = 300
+)

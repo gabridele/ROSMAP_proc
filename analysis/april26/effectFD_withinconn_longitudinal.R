@@ -12,8 +12,7 @@ library(lmerTest)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
-
+demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv")
 demos_withinconn <- demos_withinconn %>%
   mutate(
     ses_num = as.numeric(str_extract(ses_id, "\\d+"))
@@ -160,6 +159,14 @@ plot_fd_effects <- function(data_long, pred_adjusted, model_results, title) {
     ) +
     
     facet_wrap(~ network, scales = "fixed") +
+    
+    scale_y_continuous(
+      breaks = seq(-0.2, 0.7, by = 0.2)
+    ) +
+    coord_cartesian(
+      ylim = c(-0.2, 0.7)
+    )+
+    
     scale_color_manual(values = network_colors) +
     scale_fill_manual(values = network_colors) +
     theme_minimal(base_size = 13) +
