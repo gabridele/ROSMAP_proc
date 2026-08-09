@@ -127,10 +127,10 @@ individ_avg_fc <- np$load("/Users/ga0034de/individatlas_fc_matrices_442/individu
 xcpd_avg_fc600 <- np$load("/Users/ga0034de/xcpd_600parcels/600avg_fc_matrix.npy", allow_pickle = TRUE)
 
 #site_wise
-bnk400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg_bnk_fc_matrix.npy", allow_pickle = TRUE)
-uc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg_uc_fc_matrix.npy", allow_pickle = TRUE)
-mg400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg_mg_fc_matrix.npy", allow_pickle = TRUE)
-rirc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg_rirc_fc_matrix.npy", allow_pickle = TRUE)
+bnk400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg/avg_fc_bnk_matrix.npy", allow_pickle = TRUE)
+uc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg/avg_fc_uc_matrix.npy", allow_pickle = TRUE)
+mg400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg/avg_fc_mg_matrix.npy", allow_pickle = TRUE)
+rirc400xcpd <- np$load("/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg/avg_fc_rirc_matrix.npy", allow_pickle = TRUE)
 
 bnk600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/bnk/avg_bnk_fc_matrix.npy", allow_pickle = TRUE)
 uc600xcpd <- np$load("/Users/ga0034de/Desktop/ts_656/site_wise/FC/uc/avg_uc_fc_matrix.npy", allow_pickle = TRUE)
@@ -147,7 +147,13 @@ uc400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/si
 mg400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/mg/avg_fc_matrix.npy", allow_pickle = TRUE)
 rirc400invid <- np$load("/Users/ga0034de/Desktop/output_ts_individualatlas_SEND/site_wise/FC/rirc/avg_fc_matrix.npy", allow_pickle = TRUE)
 
-grad_list_individ <- get_gradients(connectome_ests = list(bnk400invid = bnk400invid, uc400invid = uc400invid, mg400invid = mg400invid, rirc400invid = rirc400invid),
+# crop to cortical only, 400x400
+bnk400xcpd <- bnk400xcpd[1:400, 1:400]
+uc400xcpd <- uc400xcpd[1:400, 1:400]
+mg400xcpd <- mg400xcpd[1:400, 1:400]
+rirc400xcpd <- rirc400xcpd[1:400, 1:400]
+
+grad_list_individ <- get_gradients(connectome_ests = list(bnk400xcpd = bnk400xcpd, uc400xcpd = uc400xcpd, mg400xcpd = mg400xcpd, rirc400xcpd = rirc400xcpd),
                                 reference_gradients = marg_gradients,
                                 n_gradients = c(1,2,3),
                                 threshold = 0.0,
@@ -167,7 +173,7 @@ grad_list_individ <- get_gradients(connectome_ests = list(bnk400invid = bnk400in
   varexp_df <- c()
   for (i in 1:nrow(params)) {
     param_i <- params[i, ]
-    grad_list <- get_gradients(connectome_ests = list(xcpd600 = xcpd_avg_fc600),
+    grad_list <- get_gradients(connectome_ests = list(bnk400xcpd = bnk400xcpd, uc400xcpd = uc400xcpd, mg400xcpd = mg400xcpd, rirc400xcpd = rirc400xcpd),
                                n_gradients = c(1,2,3),
                                threshold = param_i$threshold,
                                similarity_method = param_i$sim_method,

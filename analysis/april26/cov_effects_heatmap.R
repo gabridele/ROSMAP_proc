@@ -169,7 +169,7 @@ make_covariate_heatmap_grid_lower <- function(
       "Vis", "SomMot", "DorsAttn",
       "SalVentAttn", "Limbic", "Cont", "Default"
     ),
-    text_size = 2.3,
+    text_size = 2.2,
     fill_limits = NULL
 ) {
   
@@ -695,9 +695,9 @@ print(p_dx_pre_grid)
 print(p_dx_post_grid)
 
 ggsave(
-  filename = "analysis/april26/heatmap_grid_dcfdx_pre.pdf",
-  plot = p_dx_pre_grid,
-  width = 10,
-  height = 6,
+  filename = "analysis/april26/heatmap_grid_site_pre.pdf",
+  plot = p_site_pre_grid,
+  width = 18,
+  height = 10,
   dpi = 300
 )

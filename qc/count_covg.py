@@ -3,7 +3,7 @@ import glob
 import os
 
 # new pattern
-pattern = "/Users/ga0034de/Desktop/freesurfernobbr_xcpd_output/sub-*xcp_d*/xcp_d_nifti/sub-*/ses-*/func/*seg-4S156Parcels_stat-coverage_bold.tsv"
+pattern = "/Users/ga0034de/Desktop/BNK_BBRnoBBR_plot/covg_nobbr/*seg-4S456Parcels_stat-coverage_bold.tsv"
 
 # old 
 #pattern="/Users/ga0034de/Desktop/old_proc_priorityIDs/sub-*xcpd*/xcp_d_nifti/sub-*/ses-*/func/*seg-4S156Parcels_stat-coverage_bold.tsv"
@@ -30,4 +30,4 @@ for fname, val in results:
     # save results to new tsv file
 
 results_df = pd.DataFrame(results, columns=["sub_ses", "zero_count"])
-results_df.to_csv("freesurfnobbr_count_non-coverage_156parcels_priorityl.tsv", sep="\t", index=False)
+results_df.to_csv("nobbr_count_non-coverage_456parcels_priority.tsv", sep="\t", index=False)

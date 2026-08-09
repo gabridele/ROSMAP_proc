@@ -3,7 +3,7 @@ import glob
 import os
 
 # pattern to match all your files
-pattern = "/Volumes/GabrieleSSD/v2525_copy_ssd/sub-*xcpd*/xcp_d_nifti/sub-*/ses-*/func/*seg-4S156Parcels_stat-coverage_bold.tsv"
+pattern = "/Users/ga0034de/Desktop/BNK_BBRnoBBR_plot/covg_bbr/*seg-4S456Parcels_stat-coverage_bold.tsv"
 
 files = glob.glob(pattern)
 print(f"Found {len(files)} files matching the pattern.")
@@ -26,4 +26,4 @@ for fname, val in results:
     # save results to new tsv file
 
 results_df = pd.DataFrame(results, columns=["sub_ses", "mean_coverage_percent"])
-results_df.to_csv("v2525_mean_coverage_156parcels_priorityl.tsv", sep="\t", index=False)
+results_df.to_csv("bbr_mean_coverage_456parcels_priorityl.tsv", sep="\t", index=False)

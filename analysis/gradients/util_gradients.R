@@ -82,8 +82,8 @@ align_gradients <- function(original, derived){
   return(derived)
 }
 
-GRADIENT_LIMITS <- c(-2, 2)
-GRADIENT_BREAKS <- seq(-2, 2, by = 1)
+GRADIENT_LIMITS <- c(-15, 20)
+GRADIENT_BREAKS <- seq(-20, 20, by = 10)
 
 gradient_color_scale <- function() {
   scale_fill_viridis_c(
@@ -237,7 +237,7 @@ get_gradients <- function(connectome_ests,
   ) +
   theme_void() +
   theme(
-    legend.position = "right",
+    legend.position = "bottom",
     legend.title = element_text(size = 10),
     legend.text = element_text(size = 9),
     panel.background = element_rect(
@@ -280,7 +280,7 @@ get_gradients <- function(connectome_ests,
           labs(fill = "", title = str_to_title(str_replace(paste0(ave_conn_name, "_", grad), "_", " ")),
                subtitle = paste0(round(var_exp_df[ave_conn_name, grad]*100), "% explained variance")
           ) +
-          theme(legend.position = "",
+          theme(legend.position = "bottom",
                 panel.background = element_rect(fill = "transparent", colour = NA),
                 plot.background = element_rect(fill = "transparent", colour = NA),
                 legend.background = element_rect(fill = "transparent", colour = NA),
@@ -288,105 +288,111 @@ get_gradients <- function(connectome_ests,
                 plot.title = element_text(color = "black", hjust = 0.5),
                 plot.subtitle = element_text(color = "black", hjust = 0.5)
           ) +
-          scale_fill_viridis_c(
-          option = "viridis",
-          direction = 1,
-          begin = 0,
-          end = 1,
-          name = "Gradient value",
-          na.value = "grey85"
-        )
-          # scale_fill_gradient2(
-          #   low = muted("blue"),
-          #   mid = "white",
-          #   high = muted("red") 
-          # ) 
+          
+        #   scale_fill_viridis_c(
+        #   option = "magma",
+        #   direction = 1,
+        #   begin = 0,
+        #   end = 1,
+        #   name = "Gradient value",
+        #   na.value = "grey85"
+        # )
+          scale_fill_gradient2(
+            low = "#828F9D",
+            mid = "white",
+            high = "#CB915B",
+            limits = GRADIENT_LIMITS,
+            breaks = GRADIENT_BREAKS,
+            oob = scales::squish,
+            na.value = "grey85",
+            name = "Gradient value"
+          ) 
         
       }
     }
     
     plots <- list()
     #count <- 1
-    for (std_grad in grad_char) {
+#     for (std_grad in grad_char) {
       
-      for (ave_conn_name in names(grads_study)) {
+#       for (ave_conn_name in names(grads_study)) {
         
-        plot_data <- reference_gradients %>% mutate(region = rois_vec, study = "margulies") %>% 
-          pivot_longer(starts_with("gradient"), names_to = "gradient", values_to = "value") %>% 
-          filter(gradient == std_grad) %>% 
-          pivot_wider(names_from = study, values_from = "value") %>% 
-          inner_join(grads_study[[ave_conn_name]] %>% mutate(region = rois_vec, study = ave_conn_name), by = "region") %>% 
-          inner_join(data.frame(region = rois_vec, label = yeo_msk) %>% inner_join(net_names, by = "label") %>% select(region, name), by = "region") 
+#         plot_data <- reference_gradients %>% mutate(region = rois_vec, study = "margulies") %>% 
+#           pivot_longer(starts_with("gradient"), names_to = "gradient", values_to = "value") %>% 
+#           filter(gradient == std_grad) %>% 
+#           pivot_wider(names_from = study, values_from = "value") %>% 
+#           inner_join(grads_study[[ave_conn_name]] %>% mutate(region = rois_vec, study = ave_conn_name), by = "region") %>% 
+#           inner_join(data.frame(region = rois_vec, label = yeo_msk) %>% inner_join(net_names, by = "label") %>% select(region, name), by = "region") 
         
-        for (grad in grad_char) {
-          #plot_data  <- std_grad_long %>% filter(gradient == grad) %>% pivot_wider(names_from = "study", values_from = "value")
+#         for (grad in grad_char) {
+#           #plot_data  <- std_grad_long %>% filter(gradient == grad) %>% pivot_wider(names_from = "study", values_from = "value")
           
-          p <- plot_data %>% 
-            ggplot(aes(x = .data[[grad]], y = margulies,
-                       color = name)) +
-            geom_point(alpha = 0.2) +
-            stat_poly_eq(color = "#323232", label.x = "left", label.y = "top", size = 5) +
-            stat_poly_line(se = FALSE, color = "#323232") +
-            labs(
-              #title = str_to_title(grad),
-              y = "Margulies",
-              x = str_to_title(ave_conn_name),
-              #tag = tag_labs[count],
-              color = "Network") +
-            theme_bw() +
-            theme(
-              legend.position = "",
-              panel.background = element_rect(fill = "transparent", colour = NA),
-              plot.background = element_rect(fill = "transparent", colour = NA),
-              legend.background = element_rect(fill = "transparent", color = NA),
-              legend.box.background = element_rect(fill = "transparent", colour = NA)) +
-            scale_color_manual(values = net_names %>% select(name, col) %>% deframe()) +
-            scale_y_continuous(limits = c(min(plot_data["margulies"]), max(plot_data["margulies"])))+
-            scale_x_continuous(limits = c(min(plot_data[grad]), max(plot_data[grad])))
+#           p <- plot_data %>% 
+#             ggplot(aes(x = .data[[grad]], y = margulies,
+#                        color = name)) +
+#             geom_point(alpha = 0.2) +
+#             stat_poly_eq(color = "#323232", label.x = "left", label.y = "top", size = 5) +
+#             stat_poly_line(se = FALSE, color = "#323232") +
+#             labs(
+#               #title = str_to_title(grad),
+#               y = "Margulies",
+#               x = str_to_title(ave_conn_name),
+#               #tag = tag_labs[count],
+#               color = "Network") +
+#             theme_bw() +
+#             theme(
+#               legend.position = "right",
+#               panel.background = element_rect(fill = "transparent", colour = NA),
+#               plot.background = element_rect(fill = "transparent", colour = NA),
+#               legend.background = element_rect(fill = "transparent", color = NA),
+#               legend.box.background = element_rect(fill = "transparent", colour = NA)) +
+#             scale_color_manual(values = net_names %>% select(name, col) %>% deframe()) +
+#             scale_y_continuous(limits = c(min(plot_data["margulies"]), max(plot_data["margulies"])))+
+#             scale_x_continuous(limits = c(min(plot_data[grad]), max(plot_data[grad])))
           
           
-          if (side_density){
-            if(std_grad ==grad_char[1]) {
-              if(grad == tail(grad_char, 1)){
-                p <- p +
-                  geom_xsideboxplot(aes(y = as.numeric(factor(name))), orientation = "y", outlier.shape = NA ) +
-                  geom_ysideboxplot(aes(x = as.numeric(factor(name))), orientation = "x", outlier.shape = NA ) +
-                  #geom_xsidedensity(aes(y = after_stat(density)), show.legend = FALSE) +
-                  #geom_ysidedensity(aes(x = after_stat(density)), show.legend = FALSE) +
-                  theme_ggside_void()
+#           if (side_density){
+#             if(std_grad ==grad_char[1]) {
+#               if(grad == tail(grad_char, 1)){
+#                 p <- p +
+#                   geom_xsideboxplot(aes(y = as.numeric(factor(name))), orientation = "y", outlier.shape = NA ) +
+#                   geom_ysideboxplot(aes(x = as.numeric(factor(name))), orientation = "x", outlier.shape = NA ) +
+#                   #geom_xsidedensity(aes(y = after_stat(density)), show.legend = FALSE) +
+#                   #geom_ysidedensity(aes(x = after_stat(density)), show.legend = FALSE) +
+#                   theme_ggside_void()
                 
-              } else {
-                p <- p +
-                  geom_xsideboxplot(aes(y = as.numeric(factor(name))), orientation = "y", outlier.shape = NA ) +
-                  geom_ysidedensity(color = NA, show.legend = TRUE) +
-                  theme_ggside_void()
-              }
-            } else if(grad == tail(grad_char, 1) & std_grad != grad_char[1]){
-              p <- p + 
-                geom_ysideboxplot(aes(x = as.numeric(factor(name))), orientation = "x", outlier.shape = NA ) +
-                geom_xsidedensity(color = NA, show.legend = TRUE) +
-                theme_ggside_void()
-            } else {
-              p <- p +
-                geom_xsidedensity(color = NA, show.legend = TRUE) +
-                geom_ysidedensity(color = NA, show.legend = TRUE) +
-                theme_ggside_void()
-            }
-          }
-          plot_name <- paste(
-  "scatter",
-  ave_conn_name,
-  grad,
-  "vs_margulies",
-  std_grad,
-  sep = "_"
-)
+#               } else {
+#                 p <- p +
+#                   geom_xsideboxplot(aes(y = as.numeric(factor(name))), orientation = "y", outlier.shape = NA ) +
+#                   geom_ysidedensity(color = NA, show.legend = TRUE) +
+#                   theme_ggside_void()
+#               }
+#             } else if(grad == tail(grad_char, 1) & std_grad != grad_char[1]){
+#               p <- p + 
+#                 geom_ysideboxplot(aes(x = as.numeric(factor(name))), orientation = "x", outlier.shape = NA ) +
+#                 geom_xsidedensity(color = NA, show.legend = TRUE) +
+#                 theme_ggside_void()
+#             } else {
+#               p <- p +
+#                 geom_xsidedensity(color = NA, show.legend = TRUE) +
+#                 geom_ysidedensity(color = NA, show.legend = TRUE) +
+#                 theme_ggside_void()
+#             }
+#           }
+#           plot_name <- paste(
+#   "scatter",
+#   ave_conn_name,
+#   grad,
+#   "vs_margulies",
+#   std_grad,
+#   sep = "_"
+# )
 
-plots[[plot_name]] <- p
+# plots[[plot_name]] <- p
           
-        }
-      }
-    }
+#         }
+#       }
+#     }
     
     
     # Store all plot collections
@@ -403,6 +409,13 @@ for (plot_group in names(plot_output)) {
 
     print(
       plot_output[[plot_group]][[plot_name]]
+    )
+    ggsave(
+      filename = paste0("analysis/gradients/plots/", plot_name, ".pdf"),
+      plot = plot_output[[plot_group]][[plot_name]],
+      width = 8,
+      height = 6,
+      dpi = 300
     )
   }
 }
@@ -435,6 +448,7 @@ for (plot_group in names(plot_output)) {
            threshold = threshold)
   
   return(list(gradients = gradient_data, varexp = var_exp_df))
+
 }
 
 
