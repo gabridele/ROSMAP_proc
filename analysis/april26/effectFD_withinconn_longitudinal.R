@@ -9,6 +9,7 @@ library(lme4)
 library(lmerTest)
 library(visreg)
 library(patchwork)
+library(svglite)
 
 # ============================================================
 # 1. Load and prepare data
@@ -76,63 +77,74 @@ make_long <- function(data) {
     )
 }
 
+# ============================================================
+# 3. Global plotting / output settings
+# ============================================================
+
+out_dir <- "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26"
+
+fd_formula <- within_conn ~
+  mean_FD +
+  ses_num +
+  msex +
+  site +
+  age_scandate +
+  eyes +
+  syn_bin +
+  dcfdx +
+  (1 | sub_id)
+
+fixed_y_limits <- c(-0.2, 0.7)
+fixed_y_breaks <- seq(-0.2, 0.8, by = 0.2)
+
 
 # ============================================================
-# 3. Fit the seven network models
+# 4. Fit network models + extract statistics
 # ============================================================
 
 fit_fd_models <- function(data_long) {
 
-  # Fit one model per network
-  models <- map(
-    target_cols,
-    function(net) {
+  models <- map(target_cols, function(net) {
 
-      df_net <- data_long %>%
-        filter(network == net)
+    df_net <- data_long %>%
+      filter(network == net)
 
-      lmer(
-        within_conn ~
-          mean_FD +
-          ses_num +
-          msex +
-          site +
-          age_scandate +
-          eyes +
-          syn_bin +
-          dcfdx +
-          (1 | sub_id),
-        data = df_net
+    lmer(
+      fd_formula,
+      data = df_net,
+      control = lmerControl(
+        optimizer = "bobyqa"
       )
-    }
-  )
+    )
+  }) %>%
+    set_names(target_cols)
 
-  names(models) <- target_cols
 
-
-  # Extract model results
   results <- imap_dfr(
     models,
     function(model, net) {
 
-      coef_table <- summary(model)$coefficients
+      coefs <- summary(model)$coefficients
 
       tibble(
         network = net,
-        beta_adjusted =
-          coef_table["mean_FD", "Estimate"],
-
-        t_val_adjusted =
-          coef_table["mean_FD", "t value"],
-
-        p_adjusted =
-          coef_table["mean_FD", "Pr(>|t|)"]
+        beta_adjusted = coefs[
+          "mean_FD",
+          "Estimate"
+        ],
+        t_val_adjusted = coefs[
+          "mean_FD",
+          "t value"
+        ],
+        p_adjusted = coefs[
+          "mean_FD",
+          "Pr(>|t|)"
+        ]
       )
     }
   ) %>%
-
-    # FDR correction across the 7 networks
     mutate(
+      # BH/FDR correction across 7 networks
       q_adjusted = p.adjust(
         p_adjusted,
         method = "BH"
@@ -158,7 +170,6 @@ fit_fd_models <- function(data_long) {
       )
     )
 
-  # Return BOTH models and results
   list(
     models = models,
     results = results
@@ -167,7 +178,7 @@ fit_fd_models <- function(data_long) {
 
 
 # ============================================================
-# 4. Get adjusted model predictions
+# 5. Fixed-effect predictions
 # ============================================================
 
 get_adjusted_predictions <- function(models) {
@@ -182,10 +193,11 @@ get_adjusted_predictions <- function(models) {
         type = "fixed"
       ) %>%
         as.data.frame() %>%
-        mutate(network = net)
+        mutate(
+          network = net
+        )
     }
   ) %>%
-
     mutate(
       network = factor(
         network,
@@ -196,17 +208,47 @@ get_adjusted_predictions <- function(models) {
 
 
 # ============================================================
-# 5. Plot ordinary adjusted predictions
+# 6. Common figure theme
+# ============================================================
+
+network_plot_theme <- function() {
+
+  theme_minimal(base_size = 13) +
+
+    theme(
+      legend.position = "none",
+
+      strip.text = element_text(
+        face = "bold"
+      ),
+
+      panel.grid.minor = element_blank(),
+
+      axis.text.x = element_text(
+        size = 9
+      ),
+
+      axis.text.y = element_text(
+        size = 9
+      )
+    )
+}
+
+
+# ============================================================
+# 7. Fitted-value plot
 # ============================================================
 
 plot_fd_effects <- function(
   data_long,
-  pred_adjusted,
+  predictions,
   model_results,
-  title
+  title,
+  y_limits = fixed_y_limits,
+  y_breaks = fixed_y_breaks
 ) {
 
-  label_pos <- model_results %>%
+  labels <- model_results %>%
     mutate(
       x = Inf,
       y = Inf
@@ -227,7 +269,7 @@ plot_fd_effects <- function(
     ) +
 
     geom_ribbon(
-      data = pred_adjusted,
+      data = predictions,
       aes(
         x = x,
         ymin = conf.low,
@@ -239,7 +281,7 @@ plot_fd_effects <- function(
     ) +
 
     geom_line(
-      data = pred_adjusted,
+      data = predictions,
       aes(
         x = x,
         y = predicted,
@@ -250,7 +292,7 @@ plot_fd_effects <- function(
     ) +
 
     geom_label(
-      data = label_pos,
+      data = labels,
       aes(
         x = x,
         y = y,
@@ -266,18 +308,13 @@ plot_fd_effects <- function(
       linewidth = 0
     ) +
 
+    # Axes + tick labels on EVERY panel
     facet_wrap(
       ~ network,
       ncol = 3,
-      scales = "fixed"
-    ) +
-
-    scale_y_continuous(
-      breaks = seq(-0.2, 0.8, by = 0.2)
-    ) +
-
-    coord_cartesian(
-      ylim = c(-0.2, 0.7)
+      scales = "fixed",
+      axes = "all",
+      axis.labels = "all"
     ) +
 
     scale_color_manual(
@@ -288,17 +325,15 @@ plot_fd_effects <- function(
       values = network_colors
     ) +
 
-    theme_minimal(
-      base_size = 13
+    scale_y_continuous(
+      breaks = y_breaks
     ) +
 
-    theme(
-      legend.position = "none",
-      strip.text = element_text(
-        face = "bold"
-      ),
-      panel.grid.minor = element_blank()
+    coord_cartesian(
+      ylim = y_limits
     ) +
+
+    network_plot_theme() +
 
     labs(
       title = title,
@@ -309,108 +344,146 @@ plot_fd_effects <- function(
 
 
 # ============================================================
-# 6. Partial residual plots
+# 8. Get visreg partial residual data
 # ============================================================
 
-plot_network_partial_residuals <- function(
+get_partial_residual_data <- function(
   models,
-  model_results,
-  predictor = "mean_FD",
-  network_colors,
-  x_lab = "Mean framewise displacement",
-  y_lab = "Partial residual",
-  y_limits = c(-0.2, 0.7)
+  predictor = "mean_FD"
 ) {
 
-  network_levels <- names(models)
-
-  # ----------------------------------------------------------
-  # Extract partial residuals from each model
-  # ----------------------------------------------------------
-
-  partial_points <- imap_dfr(
+  # Run visreg only ONCE per model
+  visreg_objects <- imap(
     models,
     function(model, net) {
 
-      v <- visreg(
+      visreg(
         model,
         predictor,
         plot = FALSE,
-        predict = list(re.form = NA)
+        predict = list(
+          re.form = NA
+        )
       )
+    }
+  )
+
+
+  # -------------------------
+  # Partial residual points
+  # -------------------------
+
+  points <- imap_dfr(
+    visreg_objects,
+    function(v, net) {
+
+      residual_col <- intersect(
+        c(
+          "visreg_res",
+          "visregRes"
+        ),
+        names(v$res)
+      )
+
+      if (length(residual_col) == 0) {
+        stop(
+          paste(
+            "Could not identify visreg residual column for",
+            net
+          )
+        )
+      }
 
       tibble(
         x = v$res[[predictor]],
-        partial_residual = v$res$visreg_res,
+        partial_residual =
+          v$res[[residual_col[1]]],
         network = net
       )
     }
-  ) %>%
-    mutate(
-      network = factor(
-        network,
-        levels = network_levels
+  )
+
+
+  # -------------------------
+  # Fitted fixed-effect lines
+  # -------------------------
+
+  lines <- imap_dfr(
+    visreg_objects,
+    function(v, net) {
+
+      fit_col <- intersect(
+        c(
+          "visreg_fit",
+          "visregFit"
+        ),
+        names(v$fit)
       )
-    )
 
-
-  # ----------------------------------------------------------
-  # Extract fitted fixed-effect line
-  # ----------------------------------------------------------
-
-  partial_lines <- imap_dfr(
-    models,
-    function(model, net) {
-
-      v <- visreg(
-        model,
-        predictor,
-        plot = FALSE,
-        predict = list(re.form = NA)
-      )
+      if (length(fit_col) == 0) {
+        stop(
+          paste(
+            "Could not identify visreg fitted column for",
+            net
+          )
+        )
+      }
 
       tibble(
         x = v$fit[[predictor]],
-        fitted = v$fit$visreg_fit,
+        fitted = v$fit[[fit_col[1]]],
         network = net
       )
     }
-  ) %>%
-    mutate(
-      network = factor(
-        network,
-        levels = network_levels
+  )
+
+
+  list(
+    points = points %>%
+      mutate(
+        network = factor(
+          network,
+          levels = target_cols
+        )
+      ),
+
+    lines = lines %>%
+      mutate(
+        network = factor(
+          network,
+          levels = target_cols
+        )
       )
-    )
+  )
+}
 
 
-  # ----------------------------------------------------------
-  # Beta + q-value labels
-  # ----------------------------------------------------------
+# ============================================================
+# 9. Partial residual plot
+# ============================================================
 
-  label_pos <- model_results %>%
+plot_fd_partial_residuals <- function(
+  models,
+  model_results,
+  predictor = "mean_FD",
+  title,
+  y_limits = fixed_y_limits,
+  y_breaks = fixed_y_breaks
+) {
+
+  vr <- get_partial_residual_data(
+    models,
+    predictor
+  )
+
+  labels <- model_results %>%
     mutate(
-      network = factor(
-        network,
-        levels = network_levels
-      ),
-      label = sprintf(
-        "β = %.3f %s\nq = %.3g",
-        beta_adjusted,
-        sig_adjusted,
-        q_adjusted
-      ),
       x = Inf,
       y = Inf
     )
 
-
-  # ----------------------------------------------------------
-  # Plot
-  # ----------------------------------------------------------
-
   ggplot(
-    partial_points,
+    vr$points,
     aes(
       x = x,
       y = partial_residual,
@@ -424,7 +497,7 @@ plot_network_partial_residuals <- function(
     ) +
 
     geom_line(
-      data = partial_lines,
+      data = vr$lines,
       aes(
         x = x,
         y = fitted,
@@ -435,7 +508,7 @@ plot_network_partial_residuals <- function(
     ) +
 
     geom_label(
-      data = label_pos,
+      data = labels,
       aes(
         x = x,
         y = y,
@@ -454,63 +527,86 @@ plot_network_partial_residuals <- function(
     facet_wrap(
       ~ network,
       ncol = 3,
-      scales = "fixed"
-    ) +
-
-    scale_y_continuous(
-      breaks = seq(-0.2, 0.8, by = 0.2)
-    ) +
-
-    coord_cartesian(
-      ylim = y_limits
+      scales = "fixed",
+      axes = "all",
+      axis.labels = "all"
     ) +
 
     scale_color_manual(
       values = network_colors
     ) +
 
-    theme_minimal(
-      base_size = 13
+    scale_y_continuous(
+      breaks = y_breaks
     ) +
 
-    theme(
-      legend.position = "none",
-      strip.text = element_text(
-        face = "bold"
-      ),
-      panel.grid.minor = element_blank()
+    coord_cartesian(
+      ylim = y_limits
     ) +
+
+    network_plot_theme() +
 
     labs(
-      x = x_lab,
-      y = y_lab
+      title = title,
+      x = "Mean framewise displacement",
+      y = "Within-network connectivity (partial residual)"
     )
 }
 
 
 # ============================================================
-# 7. Print results table
+# 10. Save figure as PDF + editable SVG
+# ============================================================
+
+save_figure <- function(
+  plot,
+  filename,
+  width = 13,
+  height = 7
+) {
+
+  # PDF
+  ggsave(
+    filename = file.path(
+      out_dir,
+      paste0(filename, ".pdf")
+    ),
+    plot = plot,
+    width = width,
+    height = height
+  )
+
+  # SVG — editable in Illustrator
+  ggsave(
+    filename = file.path(
+      out_dir,
+      paste0(filename, ".svg")
+    ),
+    plot = plot,
+    device = svglite::svglite,
+    width = width,
+    height = height
+  )
+}
+
+
+# ============================================================
+# 11. Print model table
 # ============================================================
 
 print_model_table <- function(
-  model_results,
+  results,
   title
 ) {
 
   cat(
-    "\n============================================================\n"
-  )
-
-  cat(
+    "\n============================================================\n",
     title,
-    "\n"
+    "\n============================================================\n",
+    sep = ""
   )
 
-  cat(
-    "============================================================\n"
-  )
-
-  model_results %>%
+  results %>%
     select(
       network,
       beta_adjusted,
@@ -519,205 +615,146 @@ print_model_table <- function(
       q_adjusted,
       sig_adjusted
     ) %>%
-
     mutate(
       beta_adjusted = round(
         beta_adjusted,
         4
       ),
-
       t_val_adjusted = round(
         t_val_adjusted,
         3
       ),
-
       p_adjusted = signif(
         p_adjusted,
         3
       ),
-
       q_adjusted = signif(
         q_adjusted,
         3
       )
     ) %>%
-
-    print()
+    as_tibble() %>%
+    print(n = Inf)
 }
 
 
 # ============================================================
-# 8. PRE-FILTERING ANALYSIS
+# 12. Run entire FD analysis
 # ============================================================
 
-data_long_pre <- make_long(
-  demos_withinconn
-)
+run_fd_analysis <- function(
+  data_long,
+  analysis_label,
+  file_suffix
+) {
 
-pre <- fit_fd_models(
-  data_long_pre
-)
+  # -------------------------
+  # Models
+  # -------------------------
 
-models_pre <- pre$models
-model_results_pre <- pre$results
-
-pred_adjusted_pre <- get_adjusted_predictions(
-  models_pre
-)
-
-
-# Print results
-print_model_table(
-  model_results_pre,
-  "Pre-filtering adjusted FD model results"
-)
-
-
-# Save results
-write_csv(
-  model_results_pre,
-  "fd_effects_withinconn_longitudinal_preFDfilter_modelresults.csv"
-)
-
-
-# ------------------------------------------------------------
-# Adjusted fitted-value plot
-# ------------------------------------------------------------
-
-p_pre_fitted <- plot_fd_effects(
-  data_long_pre,
-  pred_adjusted_pre,
-  model_results_pre,
-  "Adjusted FD effect by network: pre-filtering"
-)
-
-print(
-  p_pre_fitted
-)
-
-ggsave(
-  "fd_effects_withinconn_longitudinal_preFDfilter_fitted.png",
-  plot = p_pre_fitted,
-  width = 12,
-  height = 8,
-  dpi = 600
-)
-
-
-# ------------------------------------------------------------
-# Partial residual plot
-# ------------------------------------------------------------
-
-p_pre_partial <- plot_network_partial_residuals(
-  models = models_pre,
-  model_results = model_results_pre,
-  predictor = "mean_FD",
-  network_colors = network_colors,
-  x_lab = "Mean framewise displacement",
-  y_lab = "Within-network connectivity (partial residual)",
-  y_limits = c(-0.2, 0.7)
-)
-
-print(
-  p_pre_partial
-)
-
-ggsave(
-  "fd_effects_withinconn_longitudinal_preFDfilter_partial_residuals.png",
-  plot = p_pre_partial,
-  width = 12,
-  height = 8,
-  dpi = 600
-)
-
-
-# ============================================================
-# 9. POST-FILTERING ANALYSIS
-# ============================================================
-
-data_long_post <- data_long_pre %>%
-  filter(
-    mean_FD < fd_threshold
+  fit <- fit_fd_models(
+    data_long
   )
 
-post <- fit_fd_models(
-  data_long_post
-)
-
-models_post <- post$models
-model_results_post <- post$results
-
-pred_adjusted_post <- get_adjusted_predictions(
-  models_post
-)
+  models <- fit$models
+  results <- fit$results
 
 
-# Print results
-print_model_table(
-  model_results_post,
-  paste0(
-    "Post-filtering adjusted FD model results: mean_FD < ",
-    fd_threshold
+  # -------------------------
+  # Predictions
+  # -------------------------
+
+  predictions <- get_adjusted_predictions(
+    models
   )
-)
 
 
-# Save results
-write_csv(
-  model_results_post,
-  "fd_effects_withinconn_longitudinal_postFDfilter_modelresults.csv"
-)
+  # -------------------------
+  # Results
+  # -------------------------
 
-
-# ------------------------------------------------------------
-# Adjusted fitted-value plot
-# ------------------------------------------------------------
-
-p_post_fitted <- plot_fd_effects(
-  data_long_post,
-  pred_adjusted_post,
-  model_results_post,
-  paste0(
-    "Adjusted FD effect by network, mean_FD < ",
-    fd_threshold
+  print_model_table(
+    results,
+    paste0(
+      analysis_label,
+      " adjusted FD model results"
+    )
   )
-)
 
-print(
-  p_post_fitted
-)
+  write_csv(
+    results,
+    file.path(
+      out_dir,
+      paste0(
+        "fd_effects_withinconn_",
+        file_suffix,
+        "_modelresults.csv"
+      )
+    )
+  )
 
-ggsave(
-  "fd_effects_withinconn_longitudinal_postFDfilter_fitted.png",
-  plot = p_post_fitted,
-  width = 12,
-  height = 8,
-  dpi = 600
-)
+
+  # -------------------------
+  # Fitted-value plot
+  # -------------------------
+
+  p_fitted <- plot_fd_effects(
+    data_long = data_long,
+    predictions = predictions,
+    model_results = results,
+    title = paste0(
+      analysis_label,
+      ": adjusted FD effect by network"
+    )
+  )
 
 
-# ------------------------------------------------------------
-# Partial residual plot
-# ------------------------------------------------------------
+  # -------------------------
+  # Partial-residual plot
+  # -------------------------
 
-p_post_partial <- plot_network_partial_residuals(
-  models = models_post,
-  model_results = model_results_post,
-  predictor = "mean_FD",
-  network_colors = network_colors,
-  x_lab = "Mean framewise displacement",
-  y_lab = "Within-network connectivity (partial residual)",
-  y_limits = c(-0.2, 0.7)
-)
+  p_partial <- plot_fd_partial_residuals(
+    models = models,
+    model_results = results,
+    predictor = "mean_FD",
+    title = paste0(
+      analysis_label,
+      ": partial residual FD effect by network"
+    )
+  )
 
-print(
-  p_post_partial
-)
 
-ggsave(
-  "fd_effects_withinconn_longitudinal_postFDfilter_partial_residuals.png",
-  plot = p_post_partial,
-  width = 12,
-  height = 8,
-  dpi = 600
-)
+  # Print
+  print(p_fitted)
+  print(p_partial)
+
+
+  # Save PDF + SVG
+  save_figure(
+    p_fitted,
+    paste0(
+      "fd_effects_withinconn_",
+      file_suffix,
+      "_fitted"
+    )
+  )
+
+  save_figure(
+    p_partial,
+    paste0(
+      "fd_effects_withinconn_",
+      file_suffix,
+      "_partial_residuals"
+    )
+  )
+
+
+  # Return everything
+  list(
+    models = models,
+    results = results,
+    predictions = predictions,
+    fitted_plot = p_fitted,
+    partial_plot = p_partial
+  )
+}

@@ -13,23 +13,11 @@ library(tibble)
 library(readr)
 library(gghalves)
 
-#comparison of
-bnk_dice_visualqc <- read_csv("~/Desktop/dice_comparison_v2511_v2525.csv") %>%
-  rename(sub_ses = code)
-bnk_visual_0808 <- read_csv("~/Desktop/BNK_BBR_QC.csv") %>%
-  select(sub_ses, QC)
+bnk_visual <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/bnk_visual_dice_cp.csv")
 
-bnk_visual <- bnk_visual_0808 %>%
-  left_join(bnk_dice_visualqc, by = "sub_ses")
-
-write.csv(bnk_visual, "~/Desktop/BNK_BBRnoBBR_plot/bnk_visual_dice.csv", row.names = FALSE)
-# edited with excel. reload now
-
-bnk_visual <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/bnk_visual_dice.csv")
-
-# if QC is NA, then get the value from visual column
+# if QC_aug26 is NA, then get the value from visual column (previous QC)
 bnk_visual <- bnk_visual %>%
-  mutate(QC = if_else(is.na(QC), visual_rating, QC)) %>%
+  mutate(QC = if_else(is.na(QC_aug26), visual_rating, QC_aug26)) %>%
   select(-visual_rating)
 
 bnk_dice_bbr <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/qc_metrics_rosmap_BBR.csv") %>%
@@ -95,19 +83,26 @@ geom_point(
 
 scale_color_manual(
   values = c(
-    "pass" = "green",
-    "fail" = "red"
+    "pass" = "#28A64B",
+    "fail" = "#A62843"
   ),
   na.value = "grey70",
-  name = "Visual QC"
+  name = "Visual QC",
 ) +
   labs(
     title = "Dice coefficient comparison of anat and func masks in MNI space",
     x = "Version",
     y = "Dice Coefficient"
   ) +
-scale_alpha_identity() +
-  theme_minimal()
+  theme_minimal() +
+  theme(axis.text=element_text(size=18),
+        axis.title=element_text(size=20),
+        plot.title = element_text(size=18, face="bold"),
+        legend.text=element_text(size=16),
+        legend.title=element_text(size=18)
+      )
+
+
 
 ### === now coverage =================================
 
@@ -154,8 +149,8 @@ ggplot(counts, aes(x = version, y = count)) +
   ) +
   scale_color_manual(
     values = c(
-      "BBR" = "blue",
-      "No BBR" = "orange"
+      "BBR" = "#298c8c",
+      "No BBR" = "#f1a226"
     ),
     na.value = "grey70",
     name = "Version"
