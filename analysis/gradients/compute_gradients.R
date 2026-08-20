@@ -1,3 +1,6 @@
+### scripts for computing gradients are "forked" from @jorittmo 's https://github.com/DeMONLab-BioFINDER/fc_changes_follow_gradients repository
+
+
 library(tidyverse)
 library(broom)
 library(SCORPIUS)
