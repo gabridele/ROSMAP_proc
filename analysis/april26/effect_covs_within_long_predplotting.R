@@ -409,11 +409,11 @@ plot_factor_distribution <- function(
       panel.grid.minor = element_blank(),
 
       axis.text.x = element_text(
-        size = 9
+        size = 20
       ),
 
       axis.text.y = element_text(
-        size = 9
+        size = 20
       )
     ) +
 
@@ -485,7 +485,8 @@ run_factor_analysis <- function(
   models,
   covariate,
   analysis_label,
-  file_suffix
+  file_suffix,
+  print_default_partial = FALSE
 ) {
 
   # ----------------------------------------------------------
@@ -569,20 +570,47 @@ run_factor_analysis <- function(
       "Violin/box/jitter show partial residuals; stars show Tukey-adjusted emmeans comparisons",
 
     y_lab =
-      "Partial residual",
+      "Within-network connectivity (partial residual)",
 
     # DON'T force partial residuals to 0–0.6
     y_limits = NULL,
     y_breaks = NULL
   )
 
-
   # ----------------------------------------------------------
   # Print
   # ----------------------------------------------------------
 
-  print(p_predicted)
-  print(p_partial)
+  if (print_default_partial) {
+
+    default_partial_data <- partial_plot_data %>%
+      filter(network == "Default") %>%
+      droplevels()
+
+    default_pairwise <- pairwise_results %>%
+      filter(network == "Default")
+
+    p_default_partial <- plot_factor_distribution(
+      plot_data = default_partial_data,
+      covariate = covariate,
+      pairwise_results = default_pairwise,
+
+      title = paste0(
+        "Partial residual distribution by ",
+        covariate
+      ),
+
+      subtitle =
+        "Violin/box/jitter show partial residuals; stars show Tukey-adjusted emmeans comparisons",
+
+      y_lab = "Within-network connectivity (partial residual)",
+
+      y_limits = NULL,
+      y_breaks = NULL
+    )
+
+    print(p_default_partial)
+  }
 
 
   # ----------------------------------------------------------
@@ -645,11 +673,11 @@ pre_results <- map(
     models = models_pre,
     covariate = .x,
     analysis_label = "Pre-filtering",
-    file_suffix = "preFDfilter"
+    file_suffix = "preFDfilter",
+    print_default_partial = TRUE
   )
 ) %>%
   set_names(covariates_to_run)
-
 
 # ============================================================
 # POST-FILTER
