@@ -1,20 +1,22 @@
 #!/bin/bash
 set -euo pipefail
 
+# uncomment if running on cluster with modules:
 # module load c3d/1.4.4
 # module load fsl/6.0
 # source ${FSLDIR}/etc/fslconf/fsl.sh
 
-pathroot="/Users/ga0034de/Desktop/output_priority4_freesurfnobbr"
+base_dir="/Users/ga0034de/Desktop"
+pathroot="${base_dir}/output_priority4_freesurfnobbr"
 
 list_sid="/Users/ga0034de/Documents/R_projs/priority_rosmap/ID_list.csv"
-output_file="/Users/ga0034de/Desktop/2704nobbr_dropout10_new.txt"
-log_file="/Users/ga0034de/Desktop/dropout10_errors.log"
+output_file="${base_dir}/2704nobbr_dropout10_new.txt"
+log_file="${base_dir}/dropout10_errors.log"
 
 echo "sid, session, volume_gm, nvox_gm, intensity_gm, volume_dropout, nvox_dropout, intensity_dropout" > "$output_file"
 : > "$log_file"
 
-wdir="/Users/ga0034de/Desktop/workdir"
+wdir="${base_dir}/workdir"
 
 # helper: find first file matching pattern
 find_first_file() {

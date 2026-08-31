@@ -62,7 +62,6 @@ while IFS=',' read -r col1 col2 rest; do
 
     echo "Using fmriprep dir: $fmriprep_dir"
 
-
     boldref_mni=$(find_first_file "${fmriprep_dir}/func" "*space-MNI152NLin6Asym_res-2_boldref.nii.gz")
     t1=$(find "${fmriprep_dir}/anat" -type f -name "*_desc-preproc_T1w.nii.gz" | grep -v "space-MNI152NLin6Asym_res-2")
     t1_mask=$(find "${fmriprep_dir}/anat" -type f -name "*_desc-brain_mask.nii.gz" | grep -v "space-MNI152NLin6Asym_res-2")
@@ -82,6 +81,7 @@ while IFS=',' read -r col1 col2 rest; do
     mattes_wt1_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$wt1","$mni",1,64] -x "$mni_mask")
     mattes_wbold_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$boldref_mni","$mni",1,64] -x "$mni_mask")
     echo "$wt1 $mni $mni_mask"
+    
     # Entropies
     entropy_t1=$(ImageIntensityStatistics 3 "$t1_resampled" "$t1_mask_bold_space" | awk 'NR==2 {print $6}')
     entropy_bold=$(ImageIntensityStatistics 3 "$boldref" "$t1_mask_bold_space" | awk 'NR==2 {print $6}')
@@ -90,5 +90,5 @@ while IFS=',' read -r col1 col2 rest; do
 
     echo "$sid $session $mattes_t1_bold $mattes_wt1_mni $mattes_wbold_mni"
     echo "$sid $session $mattes_t1_bold $mattes_wt1_mni $mattes_wbold_mni $entropy_t1 $entropy_bold $entropy_wt1 $entropy_wbold $entropy_mni" >> "$nmi_file"
-
+    #echo sid session mattes_t1_bold mattes_wt1_mni mattes_wbold_mni entropy_t1 entropy_bold entropy_wt1 entropy_wbold entropy_mni
 done < "$list_sid"

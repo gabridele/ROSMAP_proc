@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+# should get a list of boldref files with 'find', this will be used in this loop below
+
 path_fmriprep="/Users/ga0034de/Desktop/output_priority4_freesurfnobbr"
 tmp_dir="$HOME/Desktop/tmp_dir"
 dice_results="$HOME/Desktop/2704v2525freesurfnobbr_dice_results.txt"
@@ -31,6 +33,7 @@ compute_dice() {
 }
 
 export -f compute_dice
+
 
 for sub_ses in $(cat "$HOME/Desktop/priority_v2511_freesurfernobbr_coreg_boldref_files.txt"); do
     sub_id=$(grep -o 'sub-[0-9]\+' <<< "$sub_ses" | head -1)

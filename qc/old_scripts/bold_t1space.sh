@@ -1,13 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-path_fmriprep="/Users/ga0034de/Desktop/output_priority4_freesurfnobbr"
+base_dir="$HOME/Desktop"
+path_fmriprep="$base_dir/output_priority4_freesurfnobbr"
 
-find "$path_fmriprep" -type f -name "*_desc-coreg_boldref.nii.gz" ! -name "._*" > ~/Desktop/priority_v2511_freesurfernobbr_coreg_boldref_files.txt
+find "$path_fmriprep" -type f -name "*_desc-coreg_boldref.nii.gz" ! -name "._*" > "$base_dir/priority_v2511_freesurfernobbr_coreg_boldref_files.txt"
 
-t1space_nmi_file="$HOME/Desktop/2704priority_v2511_freesurfernobbr_nmi_masked.txt"
-wdir="$HOME/Desktop/workdir"
-outdir="$HOME/Desktop/freesurferbbr_bold_t1space"
+t1space_nmi_file="$base_dir/2704priority_v2511_freesurfernobbr_nmi_masked.txt"
+wdir="$base_dir/workdir"
+outdir="$base_dir/freesurferbbr_bold_t1space"
 
 mkdir -p "$wdir" "$outdir"
 
@@ -73,9 +74,8 @@ while IFS= read -r file; do
     echo "Found files:"
     echo " "
 
+    # transform boldref to t1 space, same with func mask
     antsApplyTransforms -d 3 -i "$boldref" -r "$t1" -o "$bold_t1space" -t "$matrix" --interpolation LanczosWindowedSinc
-
-
     antsApplyTransforms -d 3 -i "$t1_mask" -r "$bold_t1space" -o "$t1_mask_bold_space" -n NearestNeighbor
 
     # unmasked 
@@ -83,7 +83,7 @@ while IFS= read -r file; do
     entropy_t1=$(ImageIntensityStatistics 3 "$t1" | awk 'NR==2 {print $6}')
     entropy_bold=$(ImageIntensityStatistics 3 "$bold_t1space" | awk 'NR==2 {print $6}')
 
-    # in mni space
+    # unmasked, in mni space
     mattes_wt1_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$wt1","$mni",1,64])
     mattes_wbold_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$boldref_mni","$mni",1,64])
     entropy_wt1=$(ImageIntensityStatistics 3 "$wt1" | awk 'NR==2 {print $6}')
@@ -94,7 +94,7 @@ while IFS= read -r file; do
     mask_entropy_t1=$(ImageIntensityStatistics 3 "$t1" "$t1_mask_bold_space" | awk 'NR==2 {print $6}')
     mask_entropy_bold=$(ImageIntensityStatistics 3 "$bold_t1space" "$t1_mask_bold_space" | awk 'NR==2 {print $6}')
 
-    # in mni space
+    # MASKED, in mni space
     mask_mattes_wt1_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$wt1","$mni",1,64] -x "$mni_mask")
     mask_mattes_wbold_mni=$(MeasureImageSimilarity -d 3 -m Mattes["$boldref_mni","$mni",1,64] -x "$mni_mask")
     mask_entropy_wt1=$(ImageIntensityStatistics 3 "$wt1" "$mni_mask" | awk 'NR==2 {print $6}')
@@ -103,4 +103,4 @@ while IFS= read -r file; do
     echo "$sid $session done"
     echo "$sid, $session, $mattes_t1_bold, $mattes_wt1_mni, $mattes_wbold_mni, $entropy_t1, $entropy_bold, $entropy_wt1, $entropy_wbold, $entropy_mni, $mask_mattes_t1_bold, $mask_mattes_wt1_mni, $mask_mattes_wbold_mni, $mask_entropy_t1, $mask_entropy_bold, $mask_entropy_wt1, $mask_entropy_wbold" | tee -a "$t1space_nmi_file"
 
-done < "$HOME/Desktop/priority_v2511_freesurfernobbr_coreg_boldref_files.txt"
+done < "$base_dir/priority_v2511_freesurfernobbr_coreg_boldref_files.txt"

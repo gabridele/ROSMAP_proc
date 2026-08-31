@@ -2,8 +2,12 @@ import pandas as pd
 import glob
 import os
 
-# pattern to match all your files
-pattern = "/Users/ga0034de/Desktop/BNK_BBRnoBBR_plot/covg_bbr/*seg-4S456Parcels_stat-coverage_bold.tsv"
+
+# script to calculate the mean coverage for each file and save results to a new tsv file
+
+base_dir = "/Users/ga0034de/Desktop"
+# input pattern to match all files
+pattern = f"{base_dir}/BNK_BBRnoBBR_plot/covg_bbr/*seg-4S456Parcels_stat-coverage_bold.tsv"
 
 files = glob.glob(pattern)
 print(f"Found {len(files)} files matching the pattern.")
@@ -20,10 +24,9 @@ for f in files:
     sub_session=os.path.basename(f).split("_task-rest")[0]  # extract sub- and ses- info
     results.append((sub_session, mean_val))
 
-# print results
-for fname, val in results:
-    print(f"{fname}: {val:.2f}%")
-    # save results to new tsv file
+# # print results
+# for fname, val in results:
+#     print(f"{fname}: {val:.2f}%")
 
 results_df = pd.DataFrame(results, columns=["sub_ses", "mean_coverage_percent"])
 results_df.to_csv("bbr_mean_coverage_456parcels_priorityl.tsv", sep="\t", index=False)
