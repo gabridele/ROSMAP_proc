@@ -1,3 +1,16 @@
+# Longitudinal covariate-effects analysis for within-network connectivity.
+# Fits participant-level mixed models and produces model-predicted covariate
+# plots and pairwise comparison tables before/after FD filtering.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -19,7 +32,7 @@ emm_options(lmerTest.limit = 50000)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv")
+demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 demos_withinconn <- demos_withinconn %>%
   mutate(
@@ -112,7 +125,7 @@ sig_from_p <- function(p) {
 # Output settings
 # ============================================================
 
-out_dir <- "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26"
+out_dir <- output_dir("covariates_within_longitudinal")
 
 fixed_y_limits <- c(0, 0.6)
 fixed_y_breaks <- seq(0, 0.6, by = 0.25)

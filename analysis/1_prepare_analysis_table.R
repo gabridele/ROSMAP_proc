@@ -1,32 +1,36 @@
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
+# Prepare the analysis-ready ROSMAP connectivity table.
+#
+# This script merges scan metadata, restricted ROSMAP demographics,
+# session-specific diagnosis, scan dates, and network-connectivity summaries.
+# Private inputs are resolved through paths.R
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "paths.R"))) {
+  file.path("analysis", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(tidyverse)
 library(readxl)
-library(magrittr)
-library(purrr)
-library(ggpubr)
-library(readxl)
+library(lubridate)
 
 # ================================
-#### loading of DFs
+# Load source tables
 # ================================
 
-# get todays date in DDMM format
-today_date <- format(Sys.Date(), "%d%m")
-
-ders_withage <- read_csv("analysis/april26/sheets/derivatives_list_with_age.csv")
+ders_withage <- read_csv(require_file(data("derivatives_list_with_age.csv")))
 # make sub_ses column to be able to merge
 
 ders_withage <- ders_withage %>%
-  mutate(sub_ses = paste0(ders_withage$sub_id, "_", ders_withage$ses_id))
+  mutate(sub_ses = paste0(sub_id, "_", ses_id))
 
 ders_withage <- ders_withage %>%
   select(sub_id, ses_id, sub_ses, scanner, protocol, site, age_scandate, distortion_correction, eyes)
 
-other_demos <- read_csv("analysis/april26/sheets/OLD_mean_within_conn_demos.csv")
+other_demos <- read_csv(require_file(data("OLD_mean_within_conn_demos.csv")))
 other_demos <- other_demos %>%
   select(c(1:7))
 
@@ -34,13 +38,13 @@ other_demos <- other_demos %>%
   select(-c(site,protocol, msex))
 
 other_demos <- other_demos %>%
-  mutate(sub_ses = paste0(other_demos$sub, "_", other_demos$ses))
+  mutate(sub_ses = paste0(sub, "_", ses))
 
 other_demos <- other_demos %>%
   filter(sub_ses %in% ders_withage$sub_ses)
 
 # ignore warning about '.' its a placeholder for undisclosed values
-rosmap_demos <- read_excel("analysis/april26/sheets/ROSMAP_demos2026.xlsx")
+rosmap_demos <- read_excel(require_file(data("ROSMAP_demos2026.xlsx")))
 
 rosmap_demos <- rosmap_demos %>%
   select(c("projid", "study", "msex", "educ", "age_bl", "dcfdx_bl", "dcfdx_lv"))
@@ -57,7 +61,7 @@ rosmap_demos <- rosmap_demos %>%
   filter(projid %in% ders_withage$sub_id)
 
 # ================================
-#### checking for duplicates and counting
+# Duplicate/session-count checks
 # ================================
 
 # count duplicates in first column
@@ -73,15 +77,23 @@ other_demos_unique <- other_demos %>%
   ungroup() %>%
   select(c("sub", "ses_count"))
 
-#plot
-ggplot(other_demos_unique, aes(x = ses_count)) +
+# Plot the distribution of available sessions per participant.
+p_session_counts <- ggplot(other_demos_unique, aes(x = ses_count)) +
   geom_histogram(binwidth = 1, fill = "lightblue", color = "black") +
   labs(title = "Distribution of Session Counts per Subject",
        x = "Number of Sessions",
        y = "Frequency") +
   theme_minimal()
 
-# make table
+ggsave(
+  output("prepared", "session_count_distribution.png"),
+  p_session_counts,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+
+# Tabulate session counts.
 ses_count_table <- other_demos_unique %>%
   group_by(ses_count) %>%
   summarise(count = n())
@@ -105,25 +117,36 @@ print(study_count)
 
 
 # ================================
-#### loading of connectivity data
+# Load connectivity summaries
 # ================================
 
-demos_2807 <- read_csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/atlas_mean_connectivity456_280726.csv")
+# the csv file is a summary of the mean within and between connectivity for each subject and session
+demos <- read_csv(require_file(data("atlas_mean_connectivity456.csv")))
 
-demos_connectivity <- left_join(merged_df, demos_2807, by = c("sub_ses" = "timeseries"))
+# Older FC exports called the scan identifier `timeseries`; the cleaned
+# compute_fc_meanconn.py writes the clearer `sub_ses` name. Accept both so
+# historical tables can still be reproduced without editing the script.
+if ("timeseries" %in% names(demos) && !"sub_ses" %in% names(demos)) {
+  demos <- demos %>% rename(sub_ses = timeseries)
+}
+if (!"sub_ses" %in% names(demos)) {
+  stop("Connectivity summary must contain a 'sub_ses' identifier column.")
+}
+
+demos_connectivity <- left_join(merged_df, demos, by = "sub_ses")
 
 # add syn_bin to demos_connectivity from column distortion_correction
 demos_connectivity <- demos_connectivity %>%
   mutate(syn_bin = ifelse(distortion_correction == "SyN", 1, 0))
 
-variables = read_excel("analysis/april26/sheets/variables_ses_specific_may26.xlsx") %>%
+variables <- read_excel(require_file(data("variables_ses_specific_may26.xlsx"))) %>%
   select(sub_id, ses_id, dcfdx)
 
 # make . entry in dcfdx column to be NA
 variables <- variables %>%
   mutate(dcfdx = ifelse(dcfdx == ".", NA, dcfdx))
 
-# transform dcfdx 1 into NCI, 2 into CI, 3 into MCI, 4 into AD
+# Recode study-specific diagnosis codes into analysis categories.
 variables <- variables %>%
   mutate(dcfdx = case_when(
     dcfdx == "1" ~ "NCI",
@@ -186,14 +209,14 @@ demos_connectivity <- demos_connectivity %>%
     )
   )
 
-# MAKE ALL CONNECTIVITY COLUMNS NUMERIC
-colnames(demos_connectivity)
-connectivity_cols <- c(17:39)
+# Convert every connectivity measure supplied by the FC summary table to numeric.
+# Selecting by the source table names is robust to changes in demographic column order.
+connectivity_cols <- setdiff(names(demos), "sub_ses")
 demos_connectivity <- demos_connectivity %>%
   mutate(across(all_of(connectivity_cols), as.numeric))
 
 ## ADD SCANDATE
-demos_connectivity <- read_csv("analysis/april26/sheets/age_atscan.csv") %>%
+demos_connectivity <- read_csv(require_file(data("age_atscan.csv"))) %>%
   separate(col = "scandate_visit_projID", into = c("scandate", "visit", "projID"), sep = "_") %>%
   select(c("ses_id", "sub_id", "scandate")) %>%
   right_join(demos_connectivity, by = c("sub_id", "ses_id"))
@@ -225,18 +248,26 @@ demos_connectivity <- demos_connectivity %>%
 demos_connectivity <- demos_connectivity %>%
   mutate(dcfdx = factor(dcfdx, levels = c("NCI", "MCI", "AD")))
 
-write_csv(demos_connectivity, paste0("analysis/april26/sheets/v1.3/demos_conn_", today_date, ".csv"))
+prepared_output <- Sys.getenv(
+  "ROSMAP_effect_covs_PREPARED_CSV",
+  unset = output("prepared", "demos_conn.csv")
+)
+dir.create(dirname(prepared_output), recursive = TRUE, showWarnings = FALSE)
+write_csv(demos_connectivity, prepared_output)
 
 # print number of sub_id 
 demos_connectivity %>%
   summarise(n_subs = n_distinct(sub_id), n_ses = n_distinct(ses_id)) %>%
   print()
 
-# add age_lv which is the last age_scandate for each subject to the summary table
+# Derive last-visit values after sorting visits numerically within participant.
 demos_connectivity <- demos_connectivity %>%
+  arrange(sub_id, ses_num) %>%
   group_by(sub_id) %>%
-  mutate(age_lv = last(age_scandate)) %>%
-  mutate(dcfdx_lv = last(dcfdx)) %>%
+  mutate(
+    age_lv = last(age_scandate),
+    dcfdx_lv = last(dcfdx)
+  ) %>%
   ungroup()
 
 summary_tbl <- demos_connectivity %>%
@@ -260,9 +291,8 @@ summary_tbl <- demos_connectivity %>%
     `%AD LV` = sprintf("%.1f", mean(dcfdx_lv == "AD", na.rm = TRUE) * 100)
   )
 
-summary_tbl
-
-
+print(summary_tbl)
+write_csv(summary_tbl, output("prepared", "sample_summary_subject_level.csv"))
 
 summary_tbl_all_sessions <- demos_connectivity %>%
   summarise(
@@ -275,4 +305,8 @@ summary_tbl_all_sessions <- demos_connectivity %>%
     `%AD LV` = sprintf("%.1f", mean(dcfdx_lv == "AD", na.rm = TRUE) * 100)
   )
 
-summary_tbl_all_sessions
+print(summary_tbl_all_sessions)
+write_csv(
+  summary_tbl_all_sessions,
+  output("prepared", "sample_summary_session_level.csv")
+)

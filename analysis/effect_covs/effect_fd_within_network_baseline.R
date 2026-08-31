@@ -1,3 +1,16 @@
+# Baseline motion-sensitivity analysis for within-network connectivity.
+# Keeps the earliest session per participant and compares adjusted FD effects
+# before and after the prespecified mean-FD exclusion threshold.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "effect_covs", "paths.R"))) {
+  file.path("analysis", "effect_covs", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -10,19 +23,27 @@ library(ggeffects)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv")
+demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 # Missingness sanity check
 print(colSums(is.na(demos_withinconn)))
 
-# Keep lowest session per subject
+# Keep the earliest numeric session per participant.
 demos_min_ses <- demos_withinconn %>%
+  mutate(ses_num = as.numeric(str_extract(ses_id, "\\d+"))) %>%
   group_by(sub_id) %>%
-  slice_min(ses_id, with_ties = FALSE) %>%
-  ungroup()
-
-# Sanity check: should be one row per subject
-# print(table(demos_min_ses$sub))
+  arrange(ses_num, .by_group = TRUE) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate(
+    mean_FD = as.numeric(mean_FD),
+    msex = factor(msex),
+    site = factor(site),
+    age_scandate = as.numeric(age_scandate),
+    eyes = factor(eyes),
+    syn_bin = factor(syn_bin),
+    dcfdx = factor(dcfdx)
+  )
 
 target_cols <- c(
   "Vis", "SomMot", "DorsAttn",
@@ -210,7 +231,7 @@ print_model_table(
   "Pre-filtering adjusted FD model results"
 )
 # save table
-write_csv(model_results_pre, "fd_effects_withinconn_bl_preFDfilter_modelresults.csv")
+write_csv(model_results_pre, output("motion", "fd_effects_withinconn_bl_preFDfilter_modelresults.csv"))
 
 p_pre <- plot_fd_effects(
   data_long_pre,
@@ -223,7 +244,7 @@ print(p_pre)
 
 # save plot
 ggsave(
-  "fd_effects_withinconn_bl.png",
+  output("motion", "fd_effects_withinconn_bl.png"),
   plot = p_pre,
   width = 12,
   height = 8,
@@ -246,7 +267,7 @@ print_model_table(
 )
 
 # save table
-write_csv(model_results_post, "fd_effects_withinconn_bl_postFDfilter_modelresults.csv")
+write_csv(model_results_post, output("motion", "fd_effects_withinconn_bl_postFDfilter_modelresults.csv"))
 
 p_post <- plot_fd_effects(
   data_long_post,
@@ -259,7 +280,7 @@ print(p_post)
 
 # save plot
 ggsave(
-  "fd_effects_withinconn_bl_postFDfilter.png",
+  output("motion", "fd_effects_withinconn_bl_postFDfilter.png"),
   plot = p_post,
   width = 12,
   height = 8,

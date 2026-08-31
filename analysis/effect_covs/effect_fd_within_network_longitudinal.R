@@ -1,3 +1,16 @@
+# Longitudinal motion-sensitivity analysis for within-network connectivity.
+# Fits mixed-effects models before and after FD exclusion and generates the
+# model tables and diagnostic figures used to assess motion bias.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -17,7 +30,7 @@ library(svglite)
 # ============================================================
 
 demos_withinconn <- read.csv(
-  "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv"
+  require_file(demos("demos_conn.csv"))
 )
 
 demos_withinconn <- demos_withinconn %>%
@@ -41,7 +54,6 @@ target_cols <- c(
 
 # FD exclusion threshold
 fd_threshold <- 0.25
-
 
 # Network colours
 network_colors <- c(
@@ -97,10 +109,10 @@ data_long_all <- make_long(
 )
 
 
-# Keep observations with mean FD <= threshold
+# Keep observations with mean FD < threshold
 data_long_fd_filtered <- data_long_all %>%
   filter(
-    mean_FD <= fd_threshold
+    mean_FD < fd_threshold
   )
 
 
@@ -133,7 +145,7 @@ sample_summary <- bind_rows(
     distinct(sub_id, ses_num) %>%
     summarise(
       dataset = paste0(
-        "FD <= ",
+        "FD < ",
         fd_threshold
       ),
       n_subjects = n_distinct(sub_id),
@@ -164,7 +176,7 @@ cat(
 # 5. Global plotting / output settings
 # ============================================================
 
-out_dir <- "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26"
+out_dir <- output_dir("fd_within_longitudinal")
 
 
 # Same model is fitted in both datasets.
@@ -173,7 +185,7 @@ out_dir <- "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26"
 #   Uses the full available FD range.
 #
 # FD FILTERED:
-#   Uses only observations with mean_FD <= 0.25.
+#   Uses only observations with mean_FD < 0.25.
 #
 # mean_FD remains the predictor in both models.
 
@@ -328,7 +340,7 @@ get_adjusted_predictions <- function(models) {
 
 # ============================================================
 # 8. Common figure theme
-#    Enlarged for PowerPoint / presentation use
+#    Readable at manuscript-figure scale
 # ============================================================
 
 network_plot_theme <- function() {
@@ -380,7 +392,7 @@ network_plot_theme <- function() {
 
       # Tick labels
       # Original script used size = 9.
-      # Increased to 14 for PPT readability.
+      # Keep axis text legible in exported figures.
       axis.text.x = element_text(
         size = 14
       ),
@@ -774,7 +786,7 @@ save_figure <- function(
     height = height
   )
 
-  # SVG — editable in Illustrator / PowerPoint
+  # SVG for downstream vector editing
   ggsave(
     filename = file.path(
       out_dir,
@@ -1018,7 +1030,7 @@ results_all <- run_fd_analysis(
 # ============================================================
 # 16. RUN MODEL 2:
 #     FD-FILTERED OBSERVATIONS
-#     Keep mean FD <= 0.25
+#     Keep mean FD < 0.25
 # ============================================================
 
 results_fd_filtered <- run_fd_analysis(
@@ -1026,7 +1038,7 @@ results_fd_filtered <- run_fd_analysis(
   data_long = data_long_fd_filtered,
 
   analysis_label = paste0(
-    "FD filtered (mean FD <= ",
+    "FD filtered (mean FD < ",
     fd_threshold,
     ")"
   ),
@@ -1089,16 +1101,16 @@ write_csv(
 )
 
 # ============================================================
-# 18. PRESENTATION FIGURE:
+# 18. SELECTED-NETWORK COMPARISON FIGURE:
 #     Partial residuals before vs after FD filtering
 #
 #     Top row:    Default | Limbic | SomMot — ALL
-#     Bottom row: Default | Limbic | SomMot — FD <= 0.25
+#     Bottom row: Default | Limbic | SomMot — FD < 0.25
 # ============================================================
 
 
 # Networks to show
-presentation_networks <- c(
+selected_networks <- c(
   "Default",
   "Limbic",
   "SomMot"
@@ -1109,15 +1121,15 @@ presentation_networks <- c(
 # Extract partial residual data for selected networks
 # ------------------------------------------------------------
 
-get_presentation_residuals <- function(
+get_selected_residuals <- function(
   models,
   model_results,
   condition_label
 ) {
 
-  # Only use the three presentation networks
+  # Only use the three selected networks
   selected_models <- models[
-    presentation_networks
+    selected_networks
   ]
 
 
@@ -1131,12 +1143,12 @@ get_presentation_residuals <- function(
   # Add condition label
   points <- vr$points %>%
     filter(
-      network %in% presentation_networks
+      network %in% selected_networks
     ) %>%
     mutate(
       network = factor(
         network,
-        levels = presentation_networks
+        levels = selected_networks
       ),
       condition = condition_label
     )
@@ -1144,12 +1156,12 @@ get_presentation_residuals <- function(
 
   lines <- vr$lines %>%
     filter(
-      network %in% presentation_networks
+      network %in% selected_networks
     ) %>%
     mutate(
       network = factor(
         network,
-        levels = presentation_networks
+        levels = selected_networks
       ),
       condition = condition_label
     )
@@ -1158,12 +1170,12 @@ get_presentation_residuals <- function(
   # Model statistics for labels
   labels <- model_results %>%
     filter(
-      network %in% presentation_networks
+      network %in% selected_networks
     ) %>%
     mutate(
       network = factor(
         network,
-        levels = presentation_networks
+        levels = selected_networks
       ),
       condition = condition_label,
       x = Inf,
@@ -1191,7 +1203,7 @@ get_presentation_residuals <- function(
 # ALL observations
 # ------------------------------------------------------------
 
-pres_all <- get_presentation_residuals(
+pres_all <- get_selected_residuals(
   models = results_all$models,
   model_results = results_all$results,
   condition_label = "Before FD exclusion"
@@ -1202,68 +1214,19 @@ pres_all <- get_presentation_residuals(
 # AFTER FD filtering
 # ------------------------------------------------------------
 
-pres_filtered <- get_presentation_residuals(
+pres_filtered <- get_selected_residuals(
   models = results_fd_filtered$models,
   model_results = results_fd_filtered$results,
   condition_label = "After FD exclusion"
 )
 
 
-# ------------------------------------------------------------
-# Combine datasets
-# ------------------------------------------------------------
-
-presentation_points <- bind_rows(
-  pres_all$points,
-  pres_filtered$points
-) %>%
-  mutate(
-    condition = factor(
-      condition,
-      levels = c(
-        "Before FD exclusion",
-        "After FD exclusion"
-      )
-    )
-  )
-
-
-presentation_lines <- bind_rows(
-  pres_all$lines,
-  pres_filtered$lines
-) %>%
-  mutate(
-    condition = factor(
-      condition,
-      levels = c(
-        "Before FD exclusion",
-        "After FD exclusion"
-      )
-    )
-  )
-
-
-presentation_labels <- bind_rows(
-  pres_all$labels,
-  pres_filtered$labels
-) %>%
-  mutate(
-    condition = factor(
-      condition,
-      levels = c(
-        "Before FD exclusion",
-        "After FD exclusion"
-      )
-    )
-  )
-
-
 # ============================================================
-# 19. Make 2 x 3 presentation plot
+# 19. Make 2 x 3 selected-network plot
 # ============================================================
 
 # ============================================================
-# Presentation residual figure
+# Selected-network residual figure
 # Separate plots so BEFORE and AFTER can have different x axes
 # ============================================================
 
@@ -1435,7 +1398,7 @@ p_after <- ggplot(
   ) +
 
   labs(
-    title = "FD <= 0.25",
+    title = "FD < 0.25",
     x = "Mean framewise displacement",
     y = "Within-network connectivity\n(partial residual)"
   ) +
@@ -1488,24 +1451,24 @@ p_after <- ggplot(
 # Stack the two rows
 # ============================================================
 
-p_residuals_presentation <-
+p_residuals_selected <-
   p_before /
   p_after
 
 
-print(p_residuals_presentation)
+print(p_residuals_selected)
 
 
 # ============================================================
-# Save at presentation size
+# Save selected-network comparison
 # ============================================================
 
 ggsave(
   file.path(
     out_dir,
-    "fd_partial_residuals_presentation_before_after.pdf"
+    "fd_partial_residuals_selected_networks_before_after.pdf"
   ),
-  p_residuals_presentation,
+  p_residuals_selected,
   device = cairo_pdf,
   width = 18,
   height = 9,
@@ -1515,296 +1478,10 @@ ggsave(
 ggsave(
   file.path(
     out_dir,
-    "fd_partial_residuals_presentation_before_after.png"
+    "fd_partial_residuals_selected_networks_before_after.png"
   ),
-  p_residuals_presentation,
+  p_residuals_selected,
   width = 18,
   height = 9,
   units = "cm"
-)
-
-# ============================================================
-# BEFORE FD EXCLUSION
-# Default | Limbic | SomMot
-# ============================================================
-
-# ============================================================
-# BEFORE FD EXCLUSION
-# ============================================================
-
-p_before <- ggplot(
-  pres_all$points,
-  aes(
-    x = x,
-    y = partial_residual,
-    color = network
-  )
-) +
-
-  geom_point(
-    alpha = 0.35,
-    size = 1.2
-  ) +
-
-  geom_line(
-    data = pres_all$lines,
-    aes(
-      x = x,
-      y = fitted,
-      color = network
-    ),
-    inherit.aes = FALSE,
-    linewidth = 1
-  ) +
-
-  geom_label(
-    data = pres_all$labels,
-    aes(
-      x = x,
-      y = y,
-      label = plot_label
-    ),
-    inherit.aes = FALSE,
-    hjust = 1.05,
-    vjust = 1.1,
-    size = 4,
-    color = "black",
-    fill = "white",
-    alpha = 0.85,
-    linewidth = 0
-  ) +
-
-  facet_grid(
-    "Before FD exclusion" ~ network
-  ) +
-
-  scale_color_manual(
-    values = network_colors
-  ) +
-
-  scale_y_continuous(
-    breaks = fixed_y_breaks
-  ) +
-
-  coord_cartesian(
-    ylim = fixed_y_limits,
-    clip = "off"
-  ) +
-
-  labs(
-    x = "Mean framewise displacement",
-    y = "Within-network connectivity (partial residual)"
-  ) +
-
-  theme_minimal(base_size = 14) +
-
-  theme(
-    legend.position = "none",
-
-    strip.text.x = element_text(
-      size = 15,
-      face = "bold"
-    ),
-
-    strip.text.y = element_text(
-      size = 14,
-      face = "bold"
-    ),
-
-    axis.title.x = element_text(
-      size = 15,
-      face = "bold",
-      margin = margin(t = 8)
-    ),
-
-    axis.title.y = element_text(
-      size = 15,
-      face = "bold",
-      margin = margin(r = 8)
-    ),
-
-    axis.text.x = element_text(
-      size = 13
-    ),
-
-    axis.text.y = element_text(
-      size = 13
-    ),
-
-    panel.grid.minor = element_blank(),
-
-    panel.spacing.x = unit(
-      0.5,
-      "cm"
-    ),
-
-    # IMPORTANT: enough external space
-    plot.margin = margin(
-      t = 10,
-      r = 20,
-      b = 10,
-      l = 10,
-      unit = "pt"
-    )
-  )
-
-
-# ============================================================
-# AFTER FD EXCLUSION
-# ============================================================
-
-p_after <- ggplot(
-  pres_filtered$points,
-  aes(
-    x = x,
-    y = partial_residual,
-    color = network
-  )
-) +
-
-  geom_point(
-    alpha = 0.35,
-    size = 1.2
-  ) +
-
-  geom_line(
-    data = pres_filtered$lines,
-    aes(
-      x = x,
-      y = fitted,
-      color = network
-    ),
-    inherit.aes = FALSE,
-    linewidth = 1
-  ) +
-
-  geom_label(
-    data = pres_filtered$labels,
-    aes(
-      x = x,
-      y = y,
-      label = plot_label
-    ),
-    inherit.aes = FALSE,
-    hjust = 1.05,
-    vjust = 1.1,
-    size = 4,
-    color = "black",
-    fill = "white",
-    alpha = 0.85,
-    linewidth = 0
-  ) +
-
-  facet_grid(
-    "After FD exclusion" ~ network
-  ) +
-
-  scale_color_manual(
-    values = network_colors
-  ) +
-
-  scale_y_continuous(
-    breaks = fixed_y_breaks
-  ) +
-
-  coord_cartesian(
-    ylim = fixed_y_limits,
-    clip = "off"
-  ) +
-
-  labs(
-    x = "Mean framewise displacement",
-    y = "Within-network connectivity (partial residual)"
-  ) +
-
-  theme_minimal(base_size = 14) +
-
-  theme(
-    legend.position = "none",
-
-    strip.text.x = element_text(
-      size = 15,
-      face = "bold"
-    ),
-
-    strip.text.y = element_text(
-      size = 14,
-      face = "bold"
-    ),
-
-    axis.title.x = element_text(
-      size = 15,
-      face = "bold",
-      margin = margin(t = 8)
-    ),
-
-    axis.title.y = element_text(
-      size = 15,
-      face = "bold",
-      margin = margin(r = 8)
-    ),
-
-    axis.text.x = element_text(
-      size = 13
-    ),
-
-    axis.text.y = element_text(
-      size = 13
-    ),
-
-    panel.grid.minor = element_blank(),
-
-    panel.spacing.x = unit(
-      0.5,
-      "cm"
-    ),
-
-    plot.margin = margin(
-      t = 10,
-      r = 20,
-      b = 10,
-      l = 10,
-      unit = "pt"
-    )
-  )
-
-
-# ============================================================
-# CHECK THEM
-# ============================================================
-
-print(p_before)
-print(p_after)
-
-
-# ============================================================
-# SAVE LARGE AS VECTOR
-#
-# Do NOT try to make ggsave output match the final PPT size.
-# Resize the SVG inside PowerPoint.
-# ============================================================
-
-ggsave(
-  filename = file.path(
-    out_dir,
-    "fd_partial_residuals_BEFORE_exclusion.png"
-  ),
-  plot = p_before,
-  width = 30,
-  height = 10,
-  units = "cm",
-  bg = "white"
-)
-
-
-ggsave(
-  filename = file.path(
-    out_dir,
-    "fd_partial_residuals_AFTER_exclusion.png"
-  ),
-  plot = p_after,
-  width = 30,
-  height = 10,
-  units = "cm",
-  bg = "white"
 )

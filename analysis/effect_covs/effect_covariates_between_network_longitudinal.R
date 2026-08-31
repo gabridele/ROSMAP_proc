@@ -1,3 +1,16 @@
+# Longitudinal covariate-effects analysis for between-network connectivity.
+# Fits participant-level mixed models, estimated marginal means, and optional
+# partial-residual plots before/after the FD exclusion threshold.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -7,13 +20,18 @@ library(purrr)
 library(emmeans)
 library(ggpubr)
 library(readxl)
-library(grDevices)
+library(lme4)
+library(lmerTest)
+library(visreg)
+
+emm_options(pbkrtest.limit = 10000)
+emm_options(lmerTest.limit = 50000)
 
 # ============================================================
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_betweenconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 # Add numeric session
 demos_betweenconn <- demos_betweenconn %>%
@@ -21,51 +39,10 @@ demos_betweenconn <- demos_betweenconn %>%
     ses_num = as.numeric(str_extract(ses_id, "\\d+"))
   )
 
-## Add binary SyN variable
-#demos_betweenconn <- demos_betweenconn %>%
-#  mutate(
-#    syn_bin = ifelse(distortion_correction == "SyN", 1, 0)
-#  )
-#
-## Load diagnosis/session-specific variables
-#variables <- read_excel("variables_ses_specific_may26.xlsx") %>%
-#  select(sub_id, ses_id, dcfdx) %>%
-#  mutate(
-#    dcfdx = ifelse(dcfdx == ".", NA, dcfdx),
-#    dcfdx = case_when(
-#      dcfdx == "1" ~ "NCI",
-#      dcfdx == "2" ~ "MCI",
-#      dcfdx == "3" ~ "MCI",
-#      dcfdx == "4" ~ "AD",
-#      dcfdx == "5" ~ "AD",
-#      dcfdx == "6" ~ "other",
-#      TRUE ~ as.character(dcfdx)
-#    )
-#  )
-#
-## Merge diagnosis into main dataframe
-#demos_betweenconn <- demos_betweenconn %>%
-#  left_join(variables, by = c("sub_id", "ses_id"))
-#
-## Keep lowest/earliest session per subject
-#demos_betweenconn <- demos_betweenconn %>%
-#  mutate(
-#    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
-#  ) %>%
-#  group_by(sub_id) %>%
-#  arrange(ses_num) %>%
-#  slice(1) %>%
-#  ungroup()
+# The prepared analysis table already contains diagnosis and SyN variables.
 
 # Missingness check
 print(colSums(is.na(demos_betweenconn)))
-
-# Keep lowest session per subject
-demos_min_ses <- demos_betweenconn %>%
-  group_by(sub_id) %>%
-  arrange(ses_num) %>%
-  slice(1) %>%
-  ungroup()
 
 # Between-network columns
 target_combos <- c(
@@ -81,9 +58,10 @@ target_combos <- c(
 
 fd_threshold <- 0.25
 
-# Type conversion
-demos_min_ses <- demos_min_ses %>%
+# Convert model variables explicitly so results do not depend on CSV type inference.
+demos_betweenconn <- demos_betweenconn %>%
   mutate(
+    sub_id = factor(sub_id),
     mean_FD = as.numeric(mean_FD),
     msex = factor(msex),
     site = factor(site),
@@ -93,7 +71,6 @@ demos_min_ses <- demos_min_ses %>%
     syn_bin = factor(syn_bin)
   )
 
-print(colSums(is.na(demos_min_ses)))
 # ============================================================
 # 2. Colors for between-network combos
 # ============================================================
@@ -130,7 +107,7 @@ between_network_colors <- between_network_colors[target_combos]
 # ============================================================
 
 model_formula <- between_conn ~ mean_FD + msex + site + age_scandate +
-  syn_bin + eyes + dcfdx
+  eyes + dcfdx + syn_bin + (1 | sub_id)
 
 # Categorical covariates to test/plot
 covariates_to_run <- c(
@@ -146,8 +123,7 @@ covariates_to_run <- c(
 # ============================================================
 
 make_long <- function(data) {
-  
-  long_raw <- data %>%
+  data %>%
     pivot_longer(
       cols = all_of(target_combos),
       names_to = "network_combo",
@@ -155,42 +131,19 @@ make_long <- function(data) {
     ) %>%
     mutate(
       network_combo = factor(network_combo, levels = target_combos)
-    )
-  
-  cat("\nRows after pivot:", nrow(long_raw), "\n")
-  
-  cat("\nMissingness before model filter:\n")
-  print(
-    long_raw %>%
-      summarise(
-        n = n(),
-        mean_FD_missing = sum(is.na(mean_FD)),
-        between_conn_missing = sum(is.na(between_conn)),
-        msex_missing = sum(is.na(msex)),
-        site_missing = sum(is.na(site)),
-        age_scandate_missing = sum(is.na(age_scandate)),
-        syn_bin_missing = sum(is.na(syn_bin)),
-        eyes_missing = sum(is.na(eyes)),
-        dcfdx_missing = sum(is.na(dcfdx))
-      )
-  )
-  
-  long_filtered <- long_raw %>%
+    ) %>%
     filter(
+      !is.na(sub_id),
       !is.na(mean_FD),
       !is.na(between_conn),
       !is.na(msex),
       !is.na(site),
       !is.na(age_scandate),
-      !is.na(syn_bin),
       !is.na(eyes),
-      !is.na(dcfdx)
+      !is.na(dcfdx),
+      !is.na(syn_bin)
     ) %>%
     droplevels()
-  
-  cat("\nRows after model filter:", nrow(long_filtered), "\n")
-  
-  long_filtered
 }
 
 sig_from_p <- function(p) {
@@ -214,10 +167,10 @@ get_predicted_data <- function(data_long) {
       filter(network_combo == net) %>%
       droplevels()
     
-    model <- lm(
-      between_conn ~ mean_FD + msex + site + age_scandate +
-  syn_bin + eyes + dcfdx,
-      data = df_net
+    model <- lmer(
+      model_formula,
+      data = df_net,
+      control = lmerControl(optimizer = "bobyqa")
     )
     
     df_net %>%
@@ -242,16 +195,17 @@ fit_model_pairwise <- function(data_long, covariate) {
       filter(network_combo == net) %>%
       droplevels()
     
-    model <- lm(
-      between_conn ~ mean_FD + msex + site + age_scandate +
-  syn_bin + eyes + dcfdx,
-      data = df_net
+    model <- lmer(
+      model_formula,
+      data = df_net,
+      control = lmerControl(optimizer = "bobyqa")
     )
     
     emm <- emmeans(
       model,
       specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "tukey"
+      adjust = "tukey",
+      lmer.df = "satterthwaite"
     )
     
     pairwise_df <- as.data.frame(emm$contrasts)
@@ -274,6 +228,244 @@ fit_model_pairwise <- function(data_long, covariate) {
       sig = sig_from_p(p_adj),
       network_combo = factor(network_combo, levels = target_combos)
     )
+}
+
+# ============================================================
+# Extract partial residuals
+# ============================================================
+
+get_partial_residual_data <- function(data_long, covariate) {
+
+  map_dfr(target_combos, function(net) {
+
+    df_net <- data_long %>%
+      filter(network_combo == net) %>%
+      droplevels()
+
+    model <- lmer(
+      model_formula,
+      data = df_net,
+      control = lmerControl(optimizer = "bobyqa")
+    )
+
+    v <- visreg(
+      model,
+      covariate,
+      plot = FALSE,
+      predict = list(re.form = NA)
+    )
+
+    # visreg naming differs between versions
+    residual_col <- intersect(
+      c("visreg_res", "visregRes"),
+      names(v$res)
+    )[1]
+
+    if (is.na(residual_col)) {
+      stop(
+        paste(
+          "Could not find partial residuals for",
+          covariate,
+          "in",
+          net
+        )
+      )
+    }
+
+    tibble(
+      network_combo = net,
+      group = v$res[[covariate]],
+      partial_residual = v$res[[residual_col]]
+    )
+  }) %>%
+    mutate(
+      network_combo = factor(
+        network_combo,
+        levels = target_combos
+      )
+    )
+}
+
+
+# ============================================================
+# Brackets for partial-residual plots
+# ============================================================
+
+make_partial_residual_brackets <- function(
+  partial_data,
+  pairwise_results,
+  covariate
+) {
+
+  x_levels <- if (is.factor(partial_data$group)) {
+    levels(partial_data$group)
+  } else {
+    unique(as.character(partial_data$group))
+  }
+
+  y_positions <- partial_data %>%
+    group_by(network_combo) %>%
+    summarise(
+      y_min = min(partial_residual, na.rm = TRUE),
+      y_max = max(partial_residual, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      y_range = y_max - y_min,
+      y_range = ifelse(y_range == 0, 1, y_range)
+    )
+
+  pairwise_results %>%
+    filter(p_adj < 0.05) %>%
+    separate(
+      contrast,
+      into = c("group1", "group2"),
+      sep = " - ",
+      remove = FALSE
+    ) %>%
+    mutate(
+      group1 = ifelse(
+        group1 %in% x_levels,
+        group1,
+        str_remove(group1, paste0("^", covariate))
+      ),
+      group2 = ifelse(
+        group2 %in% x_levels,
+        group2,
+        str_remove(group2, paste0("^", covariate))
+      )
+    ) %>%
+    left_join(
+      y_positions,
+      by = "network_combo"
+    ) %>%
+    group_by(network_combo) %>%
+    arrange(p_adj, .by_group = TRUE) %>%
+    mutate(
+      bracket_number = row_number(),
+      bracket_rank = ceiling(bracket_number / 2),
+
+      y.position = ifelse(
+        bracket_number %% 2 == 1,
+        y_max + bracket_rank * 0.08 * y_range,
+        y_min - bracket_rank * 0.08 * y_range
+      ),
+
+      label = sig
+    ) %>%
+    ungroup()
+}
+
+
+# ============================================================
+# Plot partial residual distributions
+# ============================================================
+
+plot_partial_residual_covariate <- function(
+  data_long,
+  covariate,
+  pairwise_results,
+  title
+) {
+
+  partial_data <- get_partial_residual_data(
+    data_long = data_long,
+    covariate = covariate
+  )
+
+  pairwise_annot <- make_partial_residual_brackets(
+    partial_data = partial_data,
+    pairwise_results = pairwise_results,
+    covariate = covariate
+  )
+
+  p <- ggplot(
+    partial_data,
+    aes(
+      x = group,
+      y = partial_residual,
+      color = network_combo,
+      fill = network_combo
+    )
+  ) +
+
+    geom_violin(
+      alpha = 0.18,
+      linewidth = 0.3,
+      trim = FALSE
+    ) +
+
+    geom_boxplot(
+      width = 0.30,
+      alpha = 0.75,
+      outlier.shape = NA,
+      linewidth = 0.35
+    ) +
+
+    geom_jitter(
+      width = 0.12,
+      alpha = 0.09,
+      size = 0.4
+    ) +
+
+    facet_wrap(
+      ~ network_combo,
+      scales = "fixed"
+    ) +
+
+    scale_x_discrete(
+      drop = FALSE
+    ) +
+
+    scale_color_manual(
+      values = between_network_colors
+    ) +
+
+    scale_fill_manual(
+      values = between_network_colors
+    ) +
+
+    scale_y_continuous(
+      expand = expansion(mult = c(0.18, 0.18))
+    ) +
+
+    theme_minimal(base_size = 13) +
+
+    theme(
+      legend.position = "none",
+      strip.text = element_text(face = "bold"),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(
+        angle = 45,
+        hjust = 1
+      )
+    ) +
+
+    labs(
+      title = title,
+      subtitle =
+        "Violin/box/jitter show partial residuals; stars show Tukey-adjusted emmeans comparisons",
+      x = covariate,
+      y = "Partial residual"
+    )
+
+  if (nrow(pairwise_annot) > 0) {
+
+    p <- p +
+      ggpubr::stat_pvalue_manual(
+        pairwise_annot,
+        label = "label",
+        xmin = "group1",
+        xmax = "group2",
+        y.position = "y.position",
+        tip.length = 0,
+        size = 4,
+        bracket.size = 0.35,
+        hide.ns = TRUE
+      )
+  }
+
+  p
 }
 
 # ============================================================
@@ -437,42 +629,114 @@ print_pairwise_table <- function(pairwise_results, title) {
 # 8. Wrapper
 # ============================================================
 
-run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffix,
-                                y_limits = NULL,
-                                y_breaks = NULL) {
-  
+run_factor_analysis <- function(
+  data_long,
+  covariate,
+  analysis_label,
+  file_suffix,
+  y_limits = NULL,
+  y_breaks = NULL,
+  make_partial_residuals = FALSE
+) {
+
   pairwise_results <- fit_model_pairwise(
     data_long = data_long,
     covariate = covariate
   )
-  
+
   print_pairwise_table(
     pairwise_results,
-    paste0(analysis_label, ": model-based pairwise comparisons for ", covariate)
+    paste0(
+      analysis_label,
+      ": model-based pairwise comparisons for ",
+      covariate
+    )
   )
-  
+
+
+  # ----------------------------------------------------------
+  # Predicted-value plot
+  # ----------------------------------------------------------
+
   p <- plot_factor_covariate(
     data_long = data_long,
     covariate = covariate,
     pairwise_results = pairwise_results,
-    title = paste0(analysis_label, ": model-predicted distribution by ", covariate),
+    title = paste0(
+      analysis_label,
+      ": model-predicted distribution by ",
+      covariate
+    ),
     y_limits = y_limits,
     y_breaks = y_breaks
   )
-  
+
   print(p)
-  
+
   ggsave(
-    filename = paste0("betweenconn_predicted_", covariate, "_", file_suffix, ".png"),
+    filename = output(
+      "covariates",
+      paste0(
+        "betweenconn_predicted_",
+        covariate,
+        "_",
+        file_suffix,
+        ".png"
+      )
+    ),
     plot = p,
     width = 13,
     height = 9,
     dpi = 300
   )
-  
+
+
+  # ----------------------------------------------------------
+  # Partial residual plot
+  # Only produced when explicitly requested
+  # ----------------------------------------------------------
+
+  p_partial <- NULL
+
+  if (make_partial_residuals) {
+
+    p_partial <- plot_partial_residual_covariate(
+      data_long = data_long,
+      covariate = covariate,
+      pairwise_results = pairwise_results,
+
+      # no need to say pre-filtering in the title
+      title = paste0(
+        "Partial residual distribution by ",
+        covariate
+      )
+    )
+
+    print(p_partial)
+
+    ggsave(
+      filename = output(
+        "covariates",
+        paste0(
+          "betweenconn_partial_residuals_",
+          covariate,
+          "_",
+          file_suffix,
+          ".png"
+        )
+      ),
+      plot = p_partial,
+      width = 13,
+      height = 9,
+      dpi = 300
+    )
+  }
+
+
   list(
     pairwise = pairwise_results,
-    plot = p
+    plot = p,
+    partial_plot = p_partial
   )
 }
 
@@ -483,7 +747,7 @@ fixed_y_breaks <- seq(-0.2, 0.25, by = 0.25)
 # 9. Pre-filtering analysis
 # ============================================================
 
-data_long_pre <- make_long(demos_min_ses)
+data_long_pre <- make_long(demos_betweenconn)
 
 pre_results <- map(
   covariates_to_run,
@@ -493,7 +757,8 @@ pre_results <- map(
     analysis_label = "Pre-filtering",
     file_suffix = "preFDfilter",
     y_limits = fixed_y_limits,
-    y_breaks = fixed_y_breaks
+    y_breaks = fixed_y_breaks,
+    make_partial_residuals = TRUE
   )
 )
 
@@ -547,4 +812,4 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 # save final table
-write_csv(all_pairwise_results_table, "all_pairwise_results_betweenconn_covs_bl.csv")
+write_csv(all_pairwise_results_table, output("covariates", "all_pairwise_results_betweenconn_covs_long.csv"))

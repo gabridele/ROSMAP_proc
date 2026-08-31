@@ -1,3 +1,16 @@
+# Visualize average parcelwise functional-connectivity matrices.
+# Matrix locations are supplied through a manifest; the 4S456 label table is
+# supplied separately from AtlasPack so no workstation paths are embedded.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(reticulate)
 library(ggplot2)
 library(dplyr)
@@ -7,39 +20,48 @@ library(readr)
 np <- import("numpy", convert = TRUE)
 
 # ------------------------------------------------------------
-# 1. Paths and matrix names
+# 1. Inputs
 # ------------------------------------------------------------
+# Matrix paths are supplied through a small two-column CSV manifest so this
+# plotting script does not encode workstation-specific paths. The manifest
+# must contain columns named `name` and `path`; see fc_matrix_manifest.example.csv.
+manifest_file <- Sys.getenv("ROSMAP_APRIL26_FC_MANIFEST", unset = "")
+if (!nzchar(manifest_file)) {
+  stop(
+    "Set ROSMAP_APRIL26_FC_MANIFEST to a CSV with columns 'name' and 'path'. " ,
+    "See analysis/april26/fc_matrix_manifest.example.csv."
+  )
+}
+manifest_file <- ap26_require_file(manifest_file, "FC matrix manifest")
+manifest <- read_csv(manifest_file, show_col_types = FALSE)
 
-files <- c(
-  "/Users/ga0034de/Desktop/BNKBBR_ts/FC/avg/avg_fc_bnkbbr_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/bnk/avg/avg_fc_bnk_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/uc/avg/avg_fc_uc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/mg/avg/avg_fc_mg_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/site_wise/FC/rirc/avg/avg_fc_rirc_matrix.npy",
-  "/Users/ga0034de/Desktop/timeseries_2306_xcpd400/fc_matrices_456/avg/avg_fc_matrix.npy"
-)
-
-matrix_names <- c(
-  "BNKBBR",
-  "BNK",
-  "UC",
-  "MG",
-  "RIRC",
-  "whole_dataset"
-)
-
-if (length(files) != length(matrix_names)) {
-  stop("The number of files does not match the number of matrix names.")
+required_manifest_columns <- c("name", "path")
+if (!all(required_manifest_columns %in% names(manifest))) {
+  stop("FC matrix manifest must contain columns: name, path")
 }
 
-# ------------------------------------------------------------
-# 2. Read network labels
-# ------------------------------------------------------------
+files <- as.character(manifest$path)
+matrix_names <- as.character(manifest$name)
+if (length(files) == 0 || any(!nzchar(files))) {
+  stop("FC matrix manifest contains no usable paths.")
+}
 
-dseg_file <- paste0(
-  "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/",
-  "atlas-4S456Parcels/atlas-4S456Parcels_dseg.tsv"
-)
+# Resolve relative matrix paths relative to the manifest itself, not the
+# caller's working directory. Absolute paths are left unchanged.
+manifest_dir <- dirname(normalizePath(manifest_file, mustWork = TRUE))
+is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", files)
+files[!is_absolute] <- file.path(manifest_dir, files[!is_absolute])
+
+# The AtlasPack 4S456 label table is an external third-party resource and is
+# intentionally not vendored here.
+dseg_file <- Sys.getenv("ROSMAP_APRIL26_ATLAS_TSV", unset = "")
+if (!nzchar(dseg_file)) {
+  stop(
+    "Set ROSMAP_APRIL26_ATLAS_TSV to the unmodified ",
+    "AtlasPack atlas-4S456Parcels_dseg.tsv file."
+  )
+}
+dseg_file <- ap26_require_file(dseg_file, "4S456 atlas TSV")
 
 dseg <- read_tsv(
   dseg_file,
@@ -383,7 +405,7 @@ fc_plot <- make_fc_plot(
 print(fc_plot)
 
 ggsave(
-  filename = "all_average_fc_matrices.svg",
+  filename = ap26_output("fc_matrices", "all_average_fc_matrices.svg"),
   plot = fc_plot,
   width = 14,
   height = 18,
@@ -421,10 +443,9 @@ for (i in seq_along(matrices)) {
   )
 
   ggsave(
-    filename = paste0(
-      "average_fc_matrix_",
-      safe_name,
-      ".svg"
+    filename = ap26_output(
+      "fc_matrices",
+      paste0("average_fc_matrix_", safe_name, ".svg")
     ),
     plot = single_plot,
     width = 9,
@@ -605,10 +626,9 @@ for (i in seq_along(matrices)) {
   )
 
   ggsave(
-    filename = paste0(
-      "average_fc_matrix_",
-      safe_name,
-      ".png"
+    filename = ap26_output(
+      "fc_matrices",
+      paste0("average_fc_matrix_", safe_name, ".png")
     ),
     plot = matrix_plot,
     width = 10,

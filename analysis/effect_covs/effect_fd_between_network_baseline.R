@@ -1,3 +1,16 @@
+# Baseline motion-sensitivity analysis for between-network connectivity.
+# Keeps the earliest session per participant and fits adjusted linear models
+# relating mean framewise displacement (FD) to each network-pair outcome.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -12,7 +25,7 @@ library(grDevices)
 # 1. Load and prepare data
 # ============================================================
 
-demos_betweenconn <- read.csv("sheets/v1.3/demos_conn_2406.csv")
+demos_betweenconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 # Add numeric session
 demos_betweenconn <- demos_betweenconn %>%
@@ -268,7 +281,7 @@ print_model_table(
   "Pre-filtering adjusted FD model results"
 )
 # save table 
-write_csv(model_results_pre, "fd_effects_betweenconn_bl_preFDfilter_modelresults.csv")
+write_csv(model_results_pre, output("motion", "fd_effects_betweenconn_bl_preFDfilter_modelresults.csv"))
 
 p_pre <- plot_fd_effects(
   data_long_pre,
@@ -280,7 +293,7 @@ p_pre <- plot_fd_effects(
 print(p_pre)
 
 ggsave(
-  "fd_effects_betweenconn_bl.png",
+  output("motion", "fd_effects_betweenconn_bl.png"),
   plot = p_pre,
   width = 14,
   height = 10,
@@ -303,7 +316,7 @@ print_model_table(
   paste0("Post-filtering adjusted FD model results: mean_FD < ", fd_threshold)
 )
 # save table
-write_csv(model_results_post, "fd_effects_betweenconn_bl_postFDfilter_modelresults.csv")
+write_csv(model_results_post, output("motion", "fd_effects_betweenconn_bl_postFDfilter_modelresults.csv"))
 
 p_post <- plot_fd_effects(
   data_long_post,
@@ -315,7 +328,7 @@ p_post <- plot_fd_effects(
 print(p_post)
 
 ggsave(
-  "fd_effects_betweenconn_bl_postFDfilter.png",
+  output("motion", "fd_effects_betweenconn_bl_postFDfilter.png"),
   plot = p_post,
   width = 14,
   height = 10,

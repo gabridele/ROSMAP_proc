@@ -1,3 +1,16 @@
+# Visualize diagnosis trajectories over follow-up as swimmer plots.
+# Produces static and interactive panels stratified by baseline diagnosis while
+# preserving visit-level diagnosis changes and a shared time axis.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 # ===============================================================
 # Libraries
 # ===============================================================
@@ -16,7 +29,7 @@ library(grid)
 # ===============================================================
 
 demos_connectivity <- read_csv(
-  "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2807.csv"
+  ap26_require_file(ap26_demos("demos_conn_2807.csv"))
 )
 
 
@@ -390,7 +403,7 @@ print(p_static)
 # ===============================================================
 
 ggsave(
-  filename = "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/swimmer_plot_shared_x_axis.png",
+  filename = ap26_output("figures", "swimmer_plot_shared_x_axis.png"),
   plot = p_static,
   width = 18,
   height = 9,
@@ -403,7 +416,7 @@ ggsave(
 
 # Optional vector version
 ggsave(
-  filename = "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/swimmer_plot_shared_x_axis.pdf",
+  filename = ap26_output("figures", "swimmer_plot_shared_x_axis.pdf"),
   plot = p_static,
   width = 18,
   height = 9,
@@ -797,6 +810,6 @@ p_interactive
 
 saveWidget(
   widget = p_interactive,
-  file = "interactive_swimmer_plot_shared_x_axis.html",
+  file = ap26_output("figures", "interactive_swimmer_plot_shared_x_axis.html"),
   selfcontained = TRUE
 )

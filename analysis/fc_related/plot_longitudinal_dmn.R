@@ -1,3 +1,16 @@
+# Visualize longitudinal Default Mode Network trajectories.
+# Fits the DMN mixed-effects model and produces subject-level predicted
+# trajectories used for longitudinal interpretation/QC.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -13,7 +26,7 @@ library(lubridate)
 # Load data and prepare long format
 # ===============================================================
 
-demos_withinconn <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/april26/sheets/v1.3/demos_conn_2406.csv")
+demos_withinconn <- read.csv(ap26_require_file(ap26_demos("demos_conn_2406.csv")))
 
 target_cols <- c(
   "Vis", "SomMot", "DorsAttn",
@@ -172,7 +185,7 @@ pred_dmn <- pred_dmn %>%
 # ===============================================================
 
 demos_withinconn_postFD <- demos_withinconn %>%
-  filter(mean_FD < 0.25)
+  filter(mean_FD < fd_threshold)
 
 data_long_postFD <- make_long(demos_withinconn_postFD)
 
@@ -345,7 +358,7 @@ prefd_direction <- ggplot(
   )
 
 ggsave(
-  filename = "analysis/april26/plots/predicted_dmn_prefd_direction.pdf",
+  filename = ap26_output("plots", "predicted_dmn_prefd_direction.pdf"),
   plot = prefd_direction,
   width = 18,
   height = 9,

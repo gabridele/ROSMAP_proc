@@ -1,3 +1,16 @@
+# Baseline covariate-effects analysis for within-network connectivity.
+# Fits adjusted linear models and estimated-marginal-mean contrasts for sex,
+# site, eyes condition, distortion correction, and diagnosis.
+
+# Shared input/output path configuration. See README.md for environment variables.
+.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
+  file.path("analysis", "april26", "paths.R")
+} else {
+  "paths.R"
+}
+source(.paths_file)
+rm(.paths_file)
+
 library(ggplot2)
 library(dplyr)
 library(readr)
@@ -12,15 +25,29 @@ library(readxl)
 # 1. Load and prepare data
 # ============================================================
 
-demos_withinconn <- read.csv("sheets/v1.3/demos_conn_2306.csv")
+demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
+# Baseline analyses use the earliest numeric session for each participant.
+# Making this selection explicitly avoids relying on a particular input snapshot
+# having already been reduced to one row per participant.
 demos_withinconn <- demos_withinconn %>%
+  mutate(ses_num = as.numeric(str_extract(ses_id, "\\d+"))) %>%
+  group_by(sub_id) %>%
+  arrange(ses_num, .by_group = TRUE) %>%
+  slice(1) %>%
+  ungroup() %>%
   mutate(
+    mean_FD = as.numeric(mean_FD),
+    msex = factor(msex),
+    site = factor(site),
+    age_scandate = as.numeric(age_scandate),
+    eyes = factor(eyes),
+    syn_bin = factor(syn_bin),
     dcfdx = factor(
       dcfdx,
-      levels = c("NCI", "MCI", "AD", "other"),
-      labels = c("NCI", "MCI", "AD", "other")
-    ))
+      levels = c("NCI", "MCI", "AD", "other")
+    )
+  )
 
 # Missingness check
 print(colSums(is.na(demos_withinconn)))
@@ -357,7 +384,7 @@ run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffi
   print(p)
   
   ggsave(
-    filename = paste0("withinconn_predicted_", covariate, "_", file_suffix, ".png"),
+    filename = output("covariates", paste0("withinconn_predicted_", covariate, "_", file_suffix, ".png")),
     plot = p,
     width = 13,
     height = 9,
@@ -441,4 +468,4 @@ all_pairwise_results_table <- all_pairwise_results %>%
 
 print(all_pairwise_results_table, n = Inf)
 # save final table
-write_csv(all_pairwise_results_table, "all_pairwise_results_withinconn_covs_bl.csv")
+write_csv(all_pairwise_results_table, output("covariates", "all_pairwise_results_withinconn_covs_bl.csv"))
