@@ -42,7 +42,7 @@ BNK_dice_long <- BNK_dices %>%
   select(-c(contains("v25"))) %>%
   filter(!is.na(dice))
 
-# bc all no bbr passed
+# bc all no-bbr passed, visual qc performed
 BNK_dice_long <- BNK_dice_long %>%
   mutate(
     plot_qc = if_else(version == "No BBR", "pass", QC)

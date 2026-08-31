@@ -2,14 +2,24 @@
 # Matrix locations are supplied through a manifest; the 4S456 label table is
 # supplied separately from AtlasPack so no workstation paths are embedded.
 
-# Shared input/output path configuration. See README.md for environment variables.
-.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
-  file.path("analysis", "april26", "paths.R")
+# Shared input/output path configuration. See analysis/README.md.
+.script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+.script_dir <- if (length(.script_arg)) {
+  dirname(normalizePath(sub("^--file=", "", .script_arg[[1]]), mustWork = FALSE))
 } else {
-  "paths.R"
+  getwd()
 }
+.paths_candidates <- unique(c(
+  file.path("analysis", "paths.R"),
+  file.path(.script_dir, "paths.R"),
+  file.path(.script_dir, "..", "paths.R"),
+  "paths.R",
+  file.path("..", "paths.R")
+))
+.paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
+if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
-rm(.paths_file)
+rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 library(reticulate)
 library(ggplot2)
@@ -25,14 +35,14 @@ np <- import("numpy", convert = TRUE)
 # Matrix paths are supplied through a small two-column CSV manifest so this
 # plotting script does not encode workstation-specific paths. The manifest
 # must contain columns named `name` and `path`; see fc_matrix_manifest.example.csv.
-manifest_file <- Sys.getenv("ROSMAP_APRIL26_FC_MANIFEST", unset = "")
+manifest_file <- Sys.getenv("ROSMAP_FC_MANIFEST", unset = "")
 if (!nzchar(manifest_file)) {
   stop(
-    "Set ROSMAP_APRIL26_FC_MANIFEST to a CSV with columns 'name' and 'path'. " ,
-    "See analysis/april26/fc_matrix_manifest.example.csv."
+    "Set ROSMAP_FC_MANIFEST to a CSV with columns 'name' and 'path'. " ,
+    "See analysis/fc_related/fc_matrix_manifest.example.csv."
   )
 }
-manifest_file <- ap26_require_file(manifest_file, "FC matrix manifest")
+manifest_file <- require_file(manifest_file, "FC matrix manifest")
 manifest <- read_csv(manifest_file, show_col_types = FALSE)
 
 required_manifest_columns <- c("name", "path")
@@ -52,16 +62,15 @@ manifest_dir <- dirname(normalizePath(manifest_file, mustWork = TRUE))
 is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", files)
 files[!is_absolute] <- file.path(manifest_dir, files[!is_absolute])
 
-# The AtlasPack 4S456 label table is an external third-party resource and is
-# intentionally not vendored here.
-dseg_file <- Sys.getenv("ROSMAP_APRIL26_ATLAS_TSV", unset = "")
+
+dseg_file <- Sys.getenv("ROSMAP_ATLAS_TSV", unset = "")
 if (!nzchar(dseg_file)) {
   stop(
-    "Set ROSMAP_APRIL26_ATLAS_TSV to the unmodified ",
+    "Set ROSMAP_ATLAS_TSV to the unmodified ",
     "AtlasPack atlas-4S456Parcels_dseg.tsv file."
   )
 }
-dseg_file <- ap26_require_file(dseg_file, "4S456 atlas TSV")
+dseg_file <- require_file(dseg_file, "4S456 atlas TSV")
 
 dseg <- read_tsv(
   dseg_file,
@@ -405,7 +414,7 @@ fc_plot <- make_fc_plot(
 print(fc_plot)
 
 ggsave(
-  filename = ap26_output("fc_matrices", "all_average_fc_matrices.svg"),
+  filename = output("fc_matrices", "all_average_fc_matrices.svg"),
   plot = fc_plot,
   width = 14,
   height = 18,
@@ -443,7 +452,7 @@ for (i in seq_along(matrices)) {
   )
 
   ggsave(
-    filename = ap26_output(
+    filename = output(
       "fc_matrices",
       paste0("average_fc_matrix_", safe_name, ".svg")
     ),
@@ -626,7 +635,7 @@ for (i in seq_along(matrices)) {
   )
 
   ggsave(
-    filename = ap26_output(
+    filename = output(
       "fc_matrices",
       paste0("average_fc_matrix_", safe_name, ".png")
     ),

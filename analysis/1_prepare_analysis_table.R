@@ -4,14 +4,24 @@
 # session-specific diagnosis, scan dates, and network-connectivity summaries.
 # Private inputs are resolved through paths.R
 
-# Shared input/output path configuration. See README.md for environment variables.
-.paths_file <- if (file.exists(file.path("analysis", "paths.R"))) {
-  file.path("analysis", "paths.R")
+# Shared input/output path configuration. See analysis/README.md.
+.script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+.script_dir <- if (length(.script_arg)) {
+  dirname(normalizePath(sub("^--file=", "", .script_arg[[1]]), mustWork = FALSE))
 } else {
-  "paths.R"
+  getwd()
 }
+.paths_candidates <- unique(c(
+  file.path("analysis", "paths.R"),
+  file.path(.script_dir, "paths.R"),
+  file.path(.script_dir, "..", "paths.R"),
+  "paths.R",
+  file.path("..", "paths.R")
+))
+.paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
+if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
-rm(.paths_file)
+rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 library(tidyverse)
 library(readxl)
@@ -249,7 +259,7 @@ demos_connectivity <- demos_connectivity %>%
   mutate(dcfdx = factor(dcfdx, levels = c("NCI", "MCI", "AD")))
 
 prepared_output <- Sys.getenv(
-  "ROSMAP_effect_covs_PREPARED_CSV",
+  "ROSMAP_PREPARED_CSV",
   unset = output("prepared", "demos_conn.csv")
 )
 dir.create(dirname(prepared_output), recursive = TRUE, showWarnings = FALSE)
@@ -271,7 +281,7 @@ demos_connectivity <- demos_connectivity %>%
   ungroup()
 
 summary_tbl <- demos_connectivity %>%
-  arrange(sub_id, ses_id) %>%
+  arrange(sub_id, ses_num) %>%
   group_by(sub_id) %>% 
   summarise(
     age_bl = first(age_bl),
@@ -310,3 +320,64 @@ write_csv(
   summary_tbl_all_sessions,
   output("prepared", "sample_summary_session_level.csv")
 )
+
+# ===============================================================
+# Summaries after motion exclusion
+# ===============================================================
+# Keep the unfiltered demos_conn.csv above because the motion-sensitivity
+# analyses deliberately compare pre- and post-filter results. 
+# Summaries below describe the retained imaging observations.
+
+demos_connectivity_post_fd <- demos_connectivity %>%
+  filter(!is.na(mean_FD), mean_FD < FD_THRESHOLD) %>%
+  arrange(sub_id, ses_num) %>%
+  group_by(sub_id) %>%
+  mutate(
+    age_lv_post_fd = last(age_scandate),
+    dcfdx_lv_post_fd = last(dcfdx)
+  ) %>%
+  ungroup()
+
+summary_subject_post_fd <- demos_connectivity_post_fd %>%
+  arrange(sub_id, ses_num) %>%
+  group_by(sub_id) %>%
+  summarise(
+    age_bl = first(age_bl),
+    age_lv = last(age_scandate),
+    sex = first(msex),
+    education = first(educ),
+    dcfdx_lv = last(dcfdx),
+    .groups = "drop"
+  ) %>%
+  summarise(
+    N = n(),
+    `Age BL (SD)` = sprintf("%.1f (%.1f)", mean(age_bl, na.rm = TRUE), sd(age_bl, na.rm = TRUE)),
+    `Age LV (SD)` = sprintf("%.1f (%.1f)", mean(age_lv, na.rm = TRUE), sd(age_lv, na.rm = TRUE)),
+    `% Female` = sprintf("%.1f", mean(sex %in% c("Female", "F", "female"), na.rm = TRUE) * 100),
+    `Education (SD)` = sprintf("%.1f (%.1f)", mean(education, na.rm = TRUE), sd(education, na.rm = TRUE)),
+    `%MCI LV` = sprintf("%.1f", mean(dcfdx_lv == "MCI", na.rm = TRUE) * 100),
+    `%AD LV` = sprintf("%.1f", mean(dcfdx_lv == "AD", na.rm = TRUE) * 100)
+  )
+
+summary_sessions_post_fd <- demos_connectivity_post_fd %>%
+  summarise(
+    N = n(),
+    `Age BL (SD)` = sprintf("%.1f (%.1f)", mean(age_bl, na.rm = TRUE), sd(age_bl, na.rm = TRUE)),
+    `Age LV (SD)` = sprintf("%.1f (%.1f)", mean(age_lv_post_fd, na.rm = TRUE), sd(age_lv_post_fd, na.rm = TRUE)),
+    `% Female` = sprintf("%.1f", mean(msex %in% c("Female", "F", "female"), na.rm = TRUE) * 100),
+    `Education (SD)` = sprintf("%.1f (%.1f)", mean(educ, na.rm = TRUE), sd(educ, na.rm = TRUE)),
+    `%MCI LV` = sprintf("%.1f", mean(dcfdx_lv_post_fd == "MCI", na.rm = TRUE) * 100),
+    `%AD LV` = sprintf("%.1f", mean(dcfdx_lv_post_fd == "AD", na.rm = TRUE) * 100)
+  )
+
+print(summary_subject_post_fd)
+print(summary_sessions_post_fd)
+write_csv(
+  summary_subject_post_fd,
+  output("prepared", "sample_summary_subject_level_postFD.csv")
+)
+write_csv(
+  summary_sessions_post_fd,
+  output("prepared", "sample_summary_session_level_postFD.csv")
+)
+

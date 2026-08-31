@@ -2,14 +2,24 @@
 # Fits adjusted linear models and estimated-marginal-mean contrasts for sex,
 # site, eyes condition, distortion correction, and diagnosis.
 
-# Shared input/output path configuration. See README.md for environment variables.
-.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
-  file.path("analysis", "april26", "paths.R")
+# Shared input/output path configuration. See analysis/README.md.
+.script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+.script_dir <- if (length(.script_arg)) {
+  dirname(normalizePath(sub("^--file=", "", .script_arg[[1]]), mustWork = FALSE))
 } else {
-  "paths.R"
+  getwd()
 }
+.paths_candidates <- unique(c(
+  file.path("analysis", "paths.R"),
+  file.path(.script_dir, "paths.R"),
+  file.path(.script_dir, "..", "paths.R"),
+  "paths.R",
+  file.path("..", "paths.R")
+))
+.paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
+if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
-rm(.paths_file)
+rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 library(ggplot2)
 library(dplyr)
@@ -58,7 +68,7 @@ target_cols <- c(
   "SalVentAttn", "Limbic", "Cont", "Default"
 )
 
-fd_threshold <- 0.25
+fd_threshold <- FD_THRESHOLD
 
 # drop rows that have other as dfcdx
 demos_withinconn <- demos_withinconn %>%

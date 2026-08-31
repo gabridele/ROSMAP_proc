@@ -3,8 +3,8 @@
 # preserving visit-level diagnosis changes and a shared time axis.
 
 # Shared input/output path configuration. See README.md for environment variables.
-.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
-  file.path("analysis", "april26", "paths.R")
+.paths_file <- if (file.exists(file.path("analysis", "paths.R"))) {
+  file.path("analysis", "paths.R")
 } else {
   "paths.R"
 }
@@ -29,7 +29,7 @@ library(grid)
 # ===============================================================
 
 demos_connectivity <- read_csv(
-  ap26_require_file(ap26_demos("demos_conn_2807.csv"))
+  require_file(demos("demos_conn.csv"))
 )
 
 
@@ -403,7 +403,7 @@ print(p_static)
 # ===============================================================
 
 ggsave(
-  filename = ap26_output("figures", "swimmer_plot_shared_x_axis.png"),
+  filename = output("figures", "swimmer_plot_shared_x_axis.png"),
   plot = p_static,
   width = 18,
   height = 9,
@@ -416,7 +416,7 @@ ggsave(
 
 # Optional vector version
 ggsave(
-  filename = ap26_output("figures", "swimmer_plot_shared_x_axis.pdf"),
+  filename = output("figures", "swimmer_plot_shared_x_axis.pdf"),
   plot = p_static,
   width = 18,
   height = 9,
@@ -622,12 +622,195 @@ make_plotly_panel <- function(
     )
 }
 
+# ===============================================================
+# Interactive Plotly version
+#
+# Use one Plotly figure with explicit axis domains instead of
+# nested subplot() calls.
+#
+# Each panel contains at most:
+#   - 3 trajectory traces (one per final diagnosis)
+#   - 3 visit-point traces (one per visit diagnosis)
+#
+# Individual subjects within a trajectory trace are separated by NA.
+# This is much faster than creating one Plotly trace per subject.
+# ===============================================================
+
+
+# ---------------------------------------------------------------
+# Convert multiple subject trajectories into one Plotly trace
+# ---------------------------------------------------------------
+
+make_line_vectors <- function(data) {
+
+  subject_ids <- unique(data$sub_id)
+
+  x <- unlist(
+    lapply(
+      subject_ids,
+      function(id) {
+        c(
+          data$years_from_baseline[data$sub_id == id],
+          NA_real_
+        )
+      }
+    ),
+    use.names = FALSE
+  )
+
+  y <- unlist(
+    lapply(
+      subject_ids,
+      function(id) {
+        c(
+          data$subject_y[data$sub_id == id],
+          NA_real_
+        )
+      }
+    ),
+    use.names = FALSE
+  )
+
+  text <- unlist(
+    lapply(
+      subject_ids,
+      function(id) {
+        c(
+          data$tooltip[data$sub_id == id],
+          NA_character_
+        )
+      }
+    ),
+    use.names = FALSE
+  )
+
+  list(
+    x = x,
+    y = y,
+    text = text
+  )
+}
+
+
+# ---------------------------------------------------------------
+# Add one swimmer panel to an existing Plotly object
+# ---------------------------------------------------------------
+
+add_swimmer_panel <- function(
+    p,
+    panel_data,
+    xaxis_ref,
+    yaxis_ref
+) {
+
+  # -------------------------------------------------------------
+  # Subject trajectory lines
+  # -------------------------------------------------------------
+
+  for (diagnosis in c("NCI", "MCI", "AD")) {
+
+    line_data <- panel_data %>%
+      filter(final_dx == diagnosis) %>%
+      arrange(
+        sub_id,
+        years_from_baseline,
+        age_scandate
+      )
+
+    if (nrow(line_data) > 0) {
+
+      line_vectors <- make_line_vectors(line_data)
+
+      p <- p %>%
+        add_trace(
+          x = line_vectors$x,
+          y = line_vectors$y,
+          text = line_vectors$text,
+          type = "scatter",
+          mode = "lines",
+
+          xaxis = xaxis_ref,
+          yaxis = yaxis_ref,
+
+          line = list(
+            color = unname(
+              diagnosis_colours[diagnosis]
+            ),
+            width = 0.7
+          ),
+
+          opacity = 0.60,
+
+          hovertemplate = paste0(
+            "%{text}",
+            "<extra></extra>"
+          ),
+
+          connectgaps = FALSE,
+
+          name = diagnosis,
+          legendgroup = diagnosis,
+          showlegend = FALSE
+        )
+    }
+  }
+
+
+  # -------------------------------------------------------------
+  # Visit points
+  # -------------------------------------------------------------
+
+  for (diagnosis in c("NCI", "MCI", "AD")) {
+
+    point_data <- panel_data %>%
+      filter(dcfdx == diagnosis)
+
+    if (nrow(point_data) > 0) {
+
+      p <- p %>%
+        add_trace(
+          data = point_data,
+
+          x = ~years_from_baseline,
+          y = ~subject_y,
+          text = ~tooltip,
+
+          type = "scatter",
+          mode = "markers",
+
+          xaxis = xaxis_ref,
+          yaxis = yaxis_ref,
+
+          marker = list(
+            color = unname(
+              diagnosis_colours[diagnosis]
+            ),
+            size = 4,
+            opacity = 0.85,
+            line = list(
+              width = 0
+            )
+          ),
+
+          hovertemplate = paste0(
+            "%{text}",
+            "<extra></extra>"
+          ),
+
+          name = diagnosis,
+          legendgroup = diagnosis,
+          showlegend = FALSE
+        )
+    }
+  }
+
+  p
+}
+
 
 # ===============================================================
-# Interactive panel dimensions
+# Right-hand panel heights
 # ===============================================================
-
-interactive_height <- 950
 
 right_total <- max(
   n_mci + n_ad,
@@ -638,7 +821,8 @@ mci_fraction <- n_mci / right_total
 ad_fraction  <- n_ad / right_total
 
 
-# Prevent either panel from becoming extremely short
+# Do not allow either panel to become too small
+
 mci_fraction <- max(
   mci_fraction,
   0.25
@@ -650,120 +834,154 @@ ad_fraction <- max(
 )
 
 
-# Normalise so the two fractions sum to one
-fraction_total <- mci_fraction + ad_fraction
+# Re-normalise
 
-right_heights <- c(
-  mci_fraction / fraction_total,
-  ad_fraction / fraction_total
+fraction_total <- (
+  mci_fraction +
+    ad_fraction
+)
+
+mci_fraction <- (
+  mci_fraction /
+    fraction_total
+)
+
+ad_fraction <- (
+  ad_fraction /
+    fraction_total
+)
+
+
+# Small vertical gap between MCI and AD
+
+right_gap <- 0.06
+
+available_right_height <- (
+  1 - right_gap
+)
+
+ad_height <- (
+  available_right_height *
+    ad_fraction
+)
+
+ad_domain <- c(
+  0,
+  ad_height
+)
+
+mci_domain <- c(
+  ad_height + right_gap,
+  1
 )
 
 
 # ===============================================================
-# Create interactive panels
+# Y-axis ranges
 # ===============================================================
 
-plotly_nci <- make_plotly_panel(
+nci_y_range <- c(
+  max(n_nci, 1) + 0.5,
+  0.5
+)
+
+mci_y_range <- c(
+  max(n_mci, 1) + 0.5,
+  0.5
+)
+
+ad_y_range <- c(
+  max(n_ad, 1) + 0.5,
+  0.5
+)
+
+
+# ===============================================================
+# Create one Plotly figure
+# ===============================================================
+
+p_interactive <- plot_ly(
+  height = 950
+)
+
+
+# ---------------------------------------------------------------
+# Add three dummy traces for one shared legend
+# ---------------------------------------------------------------
+
+for (diagnosis in c("NCI", "MCI", "AD")) {
+
+  p_interactive <- p_interactive %>%
+    add_markers(
+      x = common_x_limits[1],
+      y = 1,
+
+      marker = list(
+        color = unname(
+          diagnosis_colours[diagnosis]
+        ),
+        size = 7
+      ),
+
+      name = diagnosis,
+      legendgroup = diagnosis,
+
+      visible = "legendonly",
+      hoverinfo = "skip",
+      showlegend = TRUE
+    )
+}
+
+
+# ---------------------------------------------------------------
+# NCI panel
+#
+# x / y
+# ---------------------------------------------------------------
+
+p_interactive <- add_swimmer_panel(
+  p = p_interactive,
   panel_data = data_nci,
-
-  panel_title = paste0(
-    "NCI at Baseline (n = ",
-    n_nci,
-    ")"
-  ),
-
-  add_legend = TRUE,
-  height_px = interactive_height
+  xaxis_ref = "x",
+  yaxis_ref = "y"
 )
 
 
-plotly_mci <- make_plotly_panel(
+# ---------------------------------------------------------------
+# MCI panel
+#
+# x2 / y2
+# ---------------------------------------------------------------
+
+p_interactive <- add_swimmer_panel(
+  p = p_interactive,
   panel_data = data_mci,
-
-  panel_title = paste0(
-    "MCI at Baseline (n = ",
-    n_mci,
-    ")"
-  ),
-
-  add_legend = FALSE,
-
-  height_px = round(
-    interactive_height * right_heights[1]
-  )
+  xaxis_ref = "x2",
+  yaxis_ref = "y2"
 )
 
 
-plotly_ad <- make_plotly_panel(
+# ---------------------------------------------------------------
+# AD panel
+#
+# x3 / y3
+# ---------------------------------------------------------------
+
+p_interactive <- add_swimmer_panel(
+  p = p_interactive,
   panel_data = data_ad,
-
-  panel_title = paste0(
-    "AD at Baseline (n = ",
-    n_ad,
-    ")"
-  ),
-
-  add_legend = FALSE,
-
-  height_px = round(
-    interactive_height * right_heights[2]
-  )
+  xaxis_ref = "x3",
+  yaxis_ref = "y3"
 )
 
 
 # ===============================================================
-# Stack MCI and AD on the right
-#
-# shareX = TRUE
-# shareY = FALSE
+# Explicit panel layout
 # ===============================================================
 
-plotly_right <- subplot(
-  plotly_mci,
-  plotly_ad,
-
-  nrows = 2,
-
-  heights = right_heights,
-
-  shareX = TRUE,
-  shareY = FALSE,
-
-  titleX = TRUE,
-  titleY = FALSE,
-
-  margin = 0.04
-)
-
-
-# ===============================================================
-# Combine NCI with the right-hand panels
-#
-# The x limits are explicitly identical in every panel.
-# The y axes remain independent.
-# ===============================================================
-
-p_interactive <- subplot(
-  plotly_nci,
-  plotly_right,
-
-  nrows = 1,
-
-  widths = c(
-    0.56,
-    0.44
-  ),
-
-  shareX = TRUE,
-  shareY = FALSE,
-
-  titleX = TRUE,
-  titleY = FALSE,
-
-  margin = 0.04
-) %>%
-
+p_interactive <- p_interactive %>%
   layout(
+
     title = list(
       text = paste0(
         "Interactive Diagnosis Trajectories Over Time",
@@ -778,29 +996,234 @@ p_interactive <- subplot(
       xanchor = "center"
     ),
 
+
+    # -----------------------------------------------------------
+    # NCI — full-height left panel
+    # -----------------------------------------------------------
+
+    xaxis = list(
+      domain = c(
+        0,
+        0.55
+      ),
+
+      range = common_x_limits,
+
+      title = list(
+        text = "Years from Baseline"
+      ),
+
+      showgrid = TRUE,
+      zeroline = FALSE
+    ),
+
+    yaxis = list(
+      domain = c(
+        0,
+        1
+      ),
+
+      range = nci_y_range,
+
+      title = "",
+
+      showticklabels = FALSE,
+      ticks = "",
+      showgrid = FALSE,
+      zeroline = FALSE
+    ),
+
+
+    # -----------------------------------------------------------
+    # MCI — upper-right
+    # -----------------------------------------------------------
+
+    xaxis2 = list(
+      domain = c(
+        0.60,
+        1
+      ),
+
+      range = common_x_limits,
+
+      anchor = "y2",
+
+      showticklabels = FALSE,
+
+      showgrid = TRUE,
+      zeroline = FALSE
+    ),
+
+    yaxis2 = list(
+      domain = mci_domain,
+
+      range = mci_y_range,
+
+      anchor = "x2",
+
+      title = "",
+
+      showticklabels = FALSE,
+      ticks = "",
+      showgrid = FALSE,
+      zeroline = FALSE
+    ),
+
+
+    # -----------------------------------------------------------
+    # AD — lower-right
+    # -----------------------------------------------------------
+
+    xaxis3 = list(
+      domain = c(
+        0.60,
+        1
+      ),
+
+      range = common_x_limits,
+
+      anchor = "y3",
+
+      title = list(
+        text = "Years from Baseline"
+      ),
+
+      showgrid = TRUE,
+      zeroline = FALSE
+    ),
+
+    yaxis3 = list(
+      domain = ad_domain,
+
+      range = ad_y_range,
+
+      anchor = "x3",
+
+      title = "",
+
+      showticklabels = FALSE,
+      ticks = "",
+      showgrid = FALSE,
+      zeroline = FALSE
+    ),
+
+
+    # -----------------------------------------------------------
+    # Panel titles
+    # -----------------------------------------------------------
+
+    annotations = list(
+
+      list(
+        text = paste0(
+          "<b>NCI at Baseline</b> (n = ",
+          n_nci,
+          ")"
+        ),
+
+        x = 0.275,
+        y = 1.025,
+
+        xref = "paper",
+        yref = "paper",
+
+        showarrow = FALSE,
+
+        xanchor = "center",
+        yanchor = "bottom",
+
+        font = list(
+          size = 14
+        )
+      ),
+
+      list(
+        text = paste0(
+          "<b>MCI at Baseline</b> (n = ",
+          n_mci,
+          ")"
+        ),
+
+        x = 0.80,
+        y = 1.025,
+
+        xref = "paper",
+        yref = "paper",
+
+        showarrow = FALSE,
+
+        xanchor = "center",
+        yanchor = "bottom",
+
+        font = list(
+          size = 14
+        )
+      ),
+
+      list(
+        text = paste0(
+          "<b>AD at Baseline</b> (n = ",
+          n_ad,
+          ")"
+        ),
+
+        x = 0.80,
+        y = ad_domain[2] + 0.012,
+
+        xref = "paper",
+        yref = "paper",
+
+        showarrow = FALSE,
+
+        xanchor = "center",
+        yanchor = "bottom",
+
+        font = list(
+          size = 14
+        )
+      )
+    ),
+
+
+    # -----------------------------------------------------------
+    # General layout
+    # -----------------------------------------------------------
+
     hovermode = "closest",
 
     legend = list(
       orientation = "h",
+
       x = 0.5,
       xanchor = "center",
-      y = -0.07
+
+      y = -0.09,
+
+      title = list(
+        text = "Diagnosis"
+      )
     ),
 
     margin = list(
-      l = 30,
-      r = 20,
-      t = 90,
-      b = 90
+      l = 25,
+      r = 25,
+      t = 120,
+      b = 100
     )
   ) %>%
 
   config(
     displaylogo = FALSE,
-    responsive = TRUE
+    responsive = TRUE,
+
+    modeBarButtonsToRemove = c(
+      "lasso2d",
+      "select2d"
+    )
   )
 
 
+# Display
 p_interactive
 
 
@@ -810,6 +1233,11 @@ p_interactive
 
 saveWidget(
   widget = p_interactive,
-  file = ap26_output("figures", "interactive_swimmer_plot_shared_x_axis.html"),
+
+  file = output(
+    "figures",
+    "interactive_swimmer_plot_shared_x_axis.html"
+  ),
+
   selfcontained = TRUE
 )

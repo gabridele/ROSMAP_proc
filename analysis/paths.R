@@ -1,47 +1,79 @@
-# Shared path configuration for analysis/effect_covs.
+# Shared configuration for ROSMAP analysis scripts.
 #
-# The ROSMAP-derived input sheets are intentionally not distributed with this
-# repository. Set ROSMAP_DATA to the directory that contains the
-# private input input sheets. Generated figures
-# and input sheets are written under ROSMAP_OUTPUT.
+# Private ROSMAP-derived inputs are intentionally not distributed with this
+# repository. Set ROSMAP_DATA to their directory and ROSMAP_OUTPUT to the
+# directory where generated tables and figures should be written.
+#
+# Publication motion-exclusion rule:
+#   retain scans only when mean_FD < 0.25 mm.
 
-.find_code_dir <- function() {
-  explicit <- Sys.getenv("ROSMAP_DIR", unset = "")
+.find_analysis_dir <- function() {
+  explicit <- Sys.getenv("ROSMAP_ANALYSIS_DIR", unset = "")
   if (nzchar(explicit)) {
     return(normalizePath(explicit, mustWork = FALSE))
   }
 
-  if (dir.exists(file.path("analysis", "effect_covs"))) {
-    return(normalizePath(file.path("analysis", "effect_covs"), mustWork = FALSE))
+  source_file <- tryCatch(sys.frame(1)$ofile, error = function(e) NULL)
+  if (!is.null(source_file) && nzchar(source_file)) {
+    return(dirname(normalizePath(source_file, mustWork = FALSE)))
   }
 
-  normalizePath(getwd(), mustWork = FALSE)
+  candidates <- c("analysis", ".", "..")
+  for (candidate in candidates) {
+    if (file.exists(file.path(candidate, "paths.R"))) {
+      return(normalizePath(candidate, mustWork = FALSE))
+    }
+  }
+
+  stop(
+    "Could not locate analysis/paths.R. Run from the repository root or ",
+    "analysis directory, or set ROSMAP_ANALYSIS_DIR."
+  )
 }
 
-DIR <- .find_code_dir()
-DATA_DIR <- Sys.getenv(
-  "ROSMAP_DATA",
-  unset = file.path(DIR, "sheets")
+ANALYSIS_DIR <- .find_analysis_dir()
+DATA_DIR <- normalizePath(
+  Sys.getenv("ROSMAP_DATA", unset = file.path(ANALYSIS_DIR, "sheets")),
+  mustWork = FALSE
 )
-OUTPUT_DIR <- Sys.getenv(
-  "ROSMAP_OUTPUT",
-  unset = file.path(DIR, "outputs")
+OUTPUT_DIR <- normalizePath(
+  Sys.getenv("ROSMAP_OUTPUT", unset = file.path(ANALYSIS_DIR, "outputs")),
+  mustWork = FALSE
 )
 
-# Build a path to a private input table. The helper does not require the file
-# to exist immediately so scripts can define paths before validating inputs.
+# Canonical publication threshold. All FD exclusion filters use strict '<'.
+FD_THRESHOLD <- 0.25
+
+# Build a path to a private input file.
 data <- function(...) {
   file.path(DATA_DIR, ...)
 }
 
-# Most analyses historically used a dated demos_conn_*.csv snapshot. Set
-# ROSMAP_DEMOS_CSV to override that snapshot without editing code.
-demos <- function(default_filename) {
+# Resolve the prepared connectivity/demographics table. An explicit override
+# takes precedence; otherwise use analysis/outputs/prepared/<filename>.
+demos <- function(default_filename = "demos_conn.csv") {
   override <- Sys.getenv("ROSMAP_DEMOS_CSV", unset = "")
   if (nzchar(override)) {
-    return(override)
+    return(normalizePath(override, mustWork = FALSE))
   }
-  data("v1.3", default_filename)
+
+  prepared <- file.path(OUTPUT_DIR, "prepared", default_filename)
+  if (file.exists(prepared)) {
+    return(prepared)
+  }
+
+  # Backward-compatible fallbacks for historical private input layouts.
+  direct_private <- file.path(DATA_DIR, default_filename)
+  if (file.exists(direct_private)) {
+    return(direct_private)
+  }
+
+  legacy_private <- file.path(DATA_DIR, "v1.3", default_filename)
+  if (file.exists(legacy_private)) {
+    return(legacy_private)
+  }
+
+  prepared
 }
 
 # Build an output path and create its parent directory on demand.
@@ -51,21 +83,20 @@ output <- function(...) {
   path
 }
 
+# Build an output directory and create it immediately.
+output_dir <- function(...) {
+  path <- file.path(OUTPUT_DIR, ...)
+  dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  path
+}
+
 # Fail early with a clear message for required files.
 require_file <- function(path, label = "input file") {
   if (!file.exists(path)) {
     stop(
       label, " not found: ", path, "\n",
-      "Set ROSMAP_DATA/ROSMAP_DEMOS_CSV as documented in ",
-      "analysis/effect_covs/README.md."
+      "Configure inputs as documented in analysis/README.md."
     )
   }
-  path
-}
-
-# Build an output directory and create it immediately.
-output_dir <- function(...) {
-  path <- file.path(OUTPUT_DIR, ...)
-  dir.create(path, recursive = TRUE, showWarnings = FALSE)
   path
 }
