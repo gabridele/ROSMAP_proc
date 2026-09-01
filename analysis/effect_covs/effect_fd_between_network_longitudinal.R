@@ -34,9 +34,6 @@ demos_betweenconn <- read.csv(require_file(demos("demos_conn.csv")))
 demos_betweenconn <- ec_prepare_model_variables(
   demos_betweenconn,
   longitudinal = TRUE
-) %>%
-filter(
-  dcfdx != "other"
 )
 
 fd_threshold <- FD_THRESHOLD

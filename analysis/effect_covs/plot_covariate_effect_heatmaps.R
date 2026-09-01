@@ -179,22 +179,16 @@ network_order <- c(
 # function to make heatmaps for a given covariate and filter status
 
 make_covariate_heatmap_grid_lower <- function(
-    df,
+    effects_df,
     covariate_to_plot,
-    filter_status_to_plot = "pre",
-    network_order = c(
-      "Vis", "SomMot", "DorsAttn",
-      "SalVentAttn", "Limbic", "Cont", "Default"
-    ),
-    text_size = 3.7,
-    fill_limits = NULL
+    filter_status_to_plot,
+    contrast_levels,
+    fill_limits = NULL,
+    text_size = 4
 ) {
   
-  # ============================================================
-  # 1. Filter to one covariate and one filter status
-  # ============================================================
-  
-  effects_df <- df %>%
+  # 1. Filter to the requested covariate/status
+  plot_df <- effects_df %>%
     filter(
       covariate == covariate_to_plot,
       filter_status == filter_status_to_plot
@@ -209,7 +203,7 @@ make_covariate_heatmap_grid_lower <- function(
       contrast2 = as.character(contrast2)
     )
   
-  if (nrow(effects_df) == 0) {
+  if (nrow(plot_df) == 0) {
     stop(
       paste0(
         "No rows found for covariate = '", covariate_to_plot,
@@ -218,19 +212,8 @@ make_covariate_heatmap_grid_lower <- function(
     )
   }
   
-  # ============================================================
-  # 2. Define covariate-level order for the outer grid
-  # ============================================================
-  
-  contrast_levels <- unique(c(effects_df$contrast1, effects_df$contrast2))
-
-  if ("NCI" %in% contrast_levels) {
-    contrast_levels <- c(
-      "NCI",
-      setdiff(contrast_levels, "NCI")
-    )
-  }  
-  effects_df <- effects_df %>%
+  # 2. Prepare factor levels and IDs  
+  plot_df <- plot_df %>%
     mutate(
       contrast1 = factor(contrast1, levels = contrast_levels),
       contrast2 = factor(contrast2, levels = contrast_levels),
@@ -238,19 +221,8 @@ make_covariate_heatmap_grid_lower <- function(
       contrast2_id = as.integer(contrast2)
     )
   
-  # ============================================================
   # 3. Force all contrasts into lower-triangle layout
-  # ============================================================
-  # Displayed contrast is always:
-  #
-  #   panel_row - panel_col
-  #
-  # If original contrast is opposite of that, flip the sign of t.
-  #
-  # Red means panel_row > panel_col.
-  # Blue means panel_row < panel_col.
-  
-  effects_df <- effects_df %>%
+  plot_df <- plot_df %>%
     mutate(
       flip_contrast = contrast1_id < contrast2_id,
       
@@ -277,12 +249,9 @@ make_covariate_heatmap_grid_lower <- function(
       panel_col = factor(panel_col, levels = contrast_levels)
     )
   
-  # ============================================================
   # 4. Build symmetric network x network heatmap inside each panel
-  # ============================================================
-  
   heatmap_df <- bind_rows(
-    effects_df %>%
+    plot_df %>%
       transmute(
         panel_row,
         panel_col,
@@ -291,7 +260,7 @@ make_covariate_heatmap_grid_lower <- function(
         t_value = t_value_plot,
         sig_across = sig_across_plot
       ),
-    effects_df %>%
+    plot_df %>%
       filter(network1 != network2) %>%
       transmute(
         panel_row,
@@ -318,12 +287,8 @@ make_covariate_heatmap_grid_lower <- function(
       col_net = factor(col_net, levels = network_order)
     )
   
-  # ============================================================
   # 5. Create full network x network grid for every lower-triangle panel
-  # ============================================================
-  
-  panel_grid <- effects_df %>%
-    distinct(panel_row, panel_col)
+  panel_grid <- plot_df %>% distinct(panel_row, panel_col)
   
   heatmap_full <- panel_grid %>%
     crossing(
@@ -335,13 +300,7 @@ make_covariate_heatmap_grid_lower <- function(
       by = c("panel_row", "panel_col", "row_net", "col_net")
     )
   
-  # ============================================================
   # 6. Remove empty first row and empty last column from outer grid
-  # ============================================================
-  # For lower triangle:
-  #   first covariate level has no row comparisons
-  #   last covariate level has no column comparisons
-  
   first_level <- contrast_levels[1]
   last_level <- contrast_levels[length(contrast_levels)]
   
@@ -361,10 +320,7 @@ make_covariate_heatmap_grid_lower <- function(
       )
     )
   
-  # ============================================================
   # 7. Plot
-  # ============================================================
-  
   p <- ggplot(
     heatmap_full,
     aes(x = col_net, y = row_net, fill = t_value)
@@ -395,26 +351,12 @@ make_covariate_heatmap_grid_lower <- function(
     theme(
       panel.grid = element_blank(),
       axis.title = element_blank(),
-      axis.text.x = element_text(
-        angle = 45,
-        hjust = 1,
-        size = 6
-      ),
-      axis.text.y = element_text(
-        size = 6
-      ),
-      strip.text = element_text(
-        face = "bold",
-        size = 9
-      ),
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 6),
+      axis.text.y = element_text(size = 6),
+      strip.text = element_text(face = "bold", size = 9),
       legend.position = "right",
-      plot.title = element_text(
-        face = "bold",
-        hjust = 0.5
-      ),
-      plot.subtitle = element_text(
-        hjust = 0.5
-      )
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5)
     ) +
     labs(
       title = paste0(covariate_to_plot, " effect heatmap grid"),
@@ -686,33 +628,41 @@ dcfdx_t_limits <- get_shared_t_limits(stats_df, "dcfdx")
 
 
 p_site_pre_grid <- make_covariate_heatmap_grid_lower(
-  df = stats_df,
+  effects_df = stats_df,
   covariate_to_plot = "site",
   filter_status_to_plot = "pre",
+  contrast_levels = EC_SITE_LEVELS,
   fill_limits = site_t_limits
 )
 
 p_site_post_grid <- make_covariate_heatmap_grid_lower(
-  df = stats_df,
+  effects_df = stats_df,
   covariate_to_plot = "site",
   filter_status_to_plot = "post",
+  contrast_levels = EC_SITE_LEVELS,
   fill_limits = site_t_limits
 )
 
 print(p_site_pre_grid)
 print(p_site_post_grid)
 
+dx_levels <- EC_DX_LEVELS[
+  EC_DX_LEVELS != "other"
+]
+
 p_dx_pre_grid <- make_covariate_heatmap_grid_lower(
-  df = stats_df,
+  effects_df = stats_df,
   covariate_to_plot = "dcfdx",
   filter_status_to_plot = "pre",
+  contrast_levels = dx_levels,
   fill_limits = dcfdx_t_limits
 )
 
 p_dx_post_grid <- make_covariate_heatmap_grid_lower(
-  df = stats_df,
+  effects_df = stats_df,
   covariate_to_plot = "dcfdx",
   filter_status_to_plot = "post",
+  contrast_levels = dx_levels,
   fill_limits = dcfdx_t_limits
 )
 

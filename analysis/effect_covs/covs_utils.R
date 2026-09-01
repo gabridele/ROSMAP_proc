@@ -17,17 +17,13 @@ library(purrr)
 library(ggeffects)
 library(lme4)
 library(lmerTest)
-library(lubridate)
 library(emmeans)
 library(ggpubr)
-library(readxl)
 library(grDevices)
 library(visreg)
 
 emm_options(pbkrtest.limit = 10000)
 emm_options(lmerTest.limit = 50000)
-
-fd_threshold <- FD_THRESHOLD
 
 EC_MSEX_LEVELS <- c(
   "female",
@@ -302,9 +298,8 @@ ec_make_long <- function(
     measure_name,
     value_name,
     required_vars,
-    verbose = FALSE,
-    site_levels = NULL
-) {
+    verbose = FALSE
+  ) {
   missing_measure_cols <- setdiff(measure_cols, names(data))
   if (length(missing_measure_cols)) {
     stop(
@@ -324,10 +319,6 @@ ec_make_long <- function(
     long_data[[measure_name]],
     levels = measure_cols
   )
-
-  if (!is.null(site_levels) && "site" %in% names(long_data)) {
-    long_data$site <- factor(long_data$site, levels = site_levels)
-  }
 
   required_vars <- unique(c(value_name, required_vars))
   missing_required <- setdiff(required_vars, names(long_data))
@@ -496,19 +487,19 @@ ec_print_fd_model_table <- function(model_results, title, measure_col = NULL) {
 
   preferred <- c(
     measure_col,
-    "beta_adjusted", "t_val_adjusted",
-    "p_adjusted", "q_adjusted", "sig_adjusted"
+    "beta_fd", "t_val_fd",
+    "p_fd", "q_fd", "sig_fd"
   )
   preferred <- preferred[!is.na(preferred) & preferred %in% names(display)]
   if (length(preferred)) display <- display[, preferred, drop = FALSE]
 
-  if ("beta_adjusted" %in% names(display)) {
-    display$beta_adjusted <- round(display$beta_adjusted, 4)
+  if ("beta_fd" %in% names(display)) {
+    display$beta_fd <- round(display$beta_fd, 4)
   }
-  if ("t_val_adjusted" %in% names(display)) {
-    display$t_val_adjusted <- round(display$t_val_adjusted, 3)
+  if ("t_val_fd" %in% names(display)) {
+    display$t_val_fd <- round(display$t_val_fd, 3)
   }
-  for (column in intersect(c("p_adjusted", "q_adjusted"), names(display))) {
+  for (column in intersect(c("p_fd", "q_fd"), names(display))) {
     display[[column]] <- signif(display[[column]], 3)
   }
 
@@ -598,9 +589,14 @@ ec_get_fitted_data <- function(
   out
 }
 
-# Run Tukey-adjusted estimated-marginal-mean contrasts from a fitted model list.
-# p_adj is intentionally retained as the historical column name; it represents
-# the emmeans/Tukey adjustment within each fitted connectivity outcome.
+# Estimate pairwise marginal-mean contrasts for each connectivity outcome.
+#
+# Returns:
+#   p_raw    - unadjusted contrast p-value
+#   p_tukey  - Tukey-adjusted p-value within each connectivity outcome
+#   q_across - BH-FDR correction across all outcomes and contrasts
+#              for the current covariate/analysis dataset
+
 ec_pairwise_from_models <- function(
     models,
     covariate,
@@ -629,7 +625,7 @@ ec_pairwise_from_models <- function(
 
 
       contrasts_raw <- as.data.frame(
-        emmeans::pairs(
+        pairs(
           emm,
           adjust = "none"
         )
@@ -637,7 +633,7 @@ ec_pairwise_from_models <- function(
 
 
       contrasts_tukey <- as.data.frame(
-        emmeans::pairs(
+        pairs(
           emm,
           adjust = "tukey"
         )
@@ -778,9 +774,9 @@ ec_fd_results_from_models <- function(
 
       out <- data.frame(
         measure = measure,
-        beta_adjusted = coefs["mean_FD", "Estimate"],
-        t_val_adjusted = coefs["mean_FD", "t value"],
-        p_adjusted = coefs["mean_FD", "Pr(>|t|)"],
+        beta_fd = coefs["mean_FD", "Estimate"],
+        t_val_fd = coefs["mean_FD", "t value"],
+        p_fd = coefs["mean_FD", "Pr(>|t|)"],
         stringsAsFactors = FALSE
       )
       names(out)[1] <- measure_col
@@ -788,13 +784,13 @@ ec_fd_results_from_models <- function(
     }
   )
 
-  results$q_adjusted <- stats::p.adjust(results$p_adjusted, method = "BH")
-  results$sig_adjusted <- ec_sig_from_p(results$q_adjusted)
+  results$q_fd <- stats::p.adjust(results$p_fd, method = "BH")
+  results$sig_fd <- ec_sig_from_p(results$q_fd)
   results$label <- sprintf(
     "β = %.3f %s\nq = %.3g",
-    results$beta_adjusted,
-    results$sig_adjusted,
-    results$q_adjusted
+    results$beta_fd,
+    results$sig_fd,
+    results$q_fd
   )
   results[[measure_col]] <- factor(
     results[[measure_col]],
