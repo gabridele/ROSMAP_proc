@@ -3,69 +3,20 @@
 # trajectories used for longitudinal interpretation/QC.
 
 # Shared input/output path configuration. See README.md for environment variables.
-.paths_file <- if (file.exists(file.path("analysis", "april26", "paths.R"))) {
-  file.path("analysis", "april26", "paths.R")
+.paths_file <- if (file.exists(file.path("analysis", "paths.R"))) {
+  file.path("analysis", "paths.R")
 } else {
   "paths.R"
 }
 source(.paths_file)
+source(file.path("analysis", "utils.R"))
 rm(.paths_file)
-
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(ggeffects)
-library(lme4)
-library(lmerTest)
-library(lubridate)
 
 # ===============================================================
 # Load data and prepare long format
 # ===============================================================
 
-demos_withinconn <- read.csv(ap26_require_file(ap26_demos("demos_conn_2406.csv")))
-
-target_cols <- c(
-  "Vis", "SomMot", "DorsAttn",
-  "SalVentAttn", "Limbic", "Cont", "Default"
-)
-
-fd_threshold <- 0.25
-
-network_colors <- c(
-  "Vis" = "#9B59B6",
-  "SomMot" = "#6C8EBF",
-  "Default" = "#D36B78",
-  "Limbic" = "#C9D39A",
-  "DorsAttn" = "#3C8D2F",
-  "SalVentAttn" = "#C84CCF",
-  "Cont" = "#E5B53A"
-)
-
-make_long <- function(data) {
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(
-      network = factor(network, levels = target_cols)
-    ) %>%
-    filter(
-      !is.na(ses_num),
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(distortion_correction),
-      !is.na(eyes)
-    )
-}
+demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 data_long <- make_long(demos_withinconn)
 
@@ -73,13 +24,6 @@ network_to_plot <- "Default"
 
 df_one_net <- data_long %>%
   filter(network == network_to_plot)
-
-site_cols <- c(
-  "BNK" = "#0072B2",
-  "MG" = "#E69F00",
-  "RIRC" = "#009E73",
-  "UC" = "#d50700"
-)
 
 # ===============================================================
 # LMER fitted lines: pre-FD
@@ -358,7 +302,7 @@ prefd_direction <- ggplot(
   )
 
 ggsave(
-  filename = ap26_output("plots", "predicted_dmn_prefd_direction.pdf"),
+  filename = output("plots", "predicted_dmn_prefd_direction.pdf"),
   plot = prefd_direction,
   width = 18,
   height = 9,

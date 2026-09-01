@@ -19,18 +19,9 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
+source(file.path("analysis", "utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(emmeans)
-library(ggpubr)
-library(readxl)
-library(grDevices)
 
 # ============================================================
 # 1. Load and prepare data
@@ -56,18 +47,6 @@ demos_min_ses <- demos_betweenconn %>%
   slice(1) %>%
   ungroup()
 
-# Between-network columns
-target_combos <- c(
-  "Cont_to_Default", "Cont_to_DorsAttn",
-  "Cont_to_Limbic", "Cont_to_SalVentAttn", "Cont_to_SomMot",
-  "Cont_to_Vis", "Default_to_DorsAttn", "Default_to_Limbic",
-  "Default_to_SalVentAttn", "Default_to_SomMot", "Default_to_Vis",
-  "DorsAttn_to_Limbic", "DorsAttn_to_SalVentAttn", "DorsAttn_to_SomMot",
-  "DorsAttn_to_Vis", "Limbic_to_SalVentAttn", "Limbic_to_SomMot",
-  "Limbic_to_Vis", "SalVentAttn_to_SomMot", "SalVentAttn_to_Vis",
-  "SomMot_to_Vis"
-)
-
 fd_threshold <- FD_THRESHOLD
 
 # Type conversion
@@ -87,30 +66,6 @@ print(colSums(is.na(demos_min_ses)))
 # 2. Colors for between-network combos
 # ============================================================
 
-between_network_colors <- c(
-  "Cont_to_Default" = "#DC9059",
-  "Cont_to_DorsAttn" = "#91A135",
-  "Cont_to_Limbic" = "#D7C46A",
-  "Cont_to_SalVentAttn" = "#D78185",
-  "Cont_to_SomMot" = "#A9A27D",
-  "Cont_to_Vis" = "#C08778",
-  "Default_to_DorsAttn" = "#887C54",
-  "Default_to_Limbic" = "#CE9F89",
-  "Default_to_SalVentAttn" = "#CE5CA3",
-  "Default_to_SomMot" = "#A07D9C",
-  "Default_to_Vis" = "#B76297",
-  "DorsAttn_to_Limbic" = "#83B065",
-  "DorsAttn_to_SalVentAttn" = "#826D7F",
-  "DorsAttn_to_SomMot" = "#548E77",
-  "DorsAttn_to_Vis" = "#6B7373",
-  "Limbic_to_SalVentAttn" = "#C990B4",
-  "Limbic_to_SomMot" = "#9BB1AD",
-  "Limbic_to_Vis" = "#B296A8",
-  "SalVentAttn_to_SomMot" = "#9A6DC7",
-  "SalVentAttn_to_Vis" = "#B252C3",
-  "SomMot_to_Vis" = "#8474BB"
-)
-
 # Make sure color vector is in the same order as target_combos
 between_network_colors <- between_network_colors[target_combos]
 
@@ -120,15 +75,6 @@ between_network_colors <- between_network_colors[target_combos]
 
 model_formula <- between_conn ~ mean_FD + msex + site + age_scandate +
   syn_bin + eyes + dcfdx
-
-# Categorical covariates to test/plot
-covariates_to_run <- c(
-  "msex",
-  "site",
-  "eyes",
-  "syn_bin",
-  "dcfdx"
-)
 
 # ============================================================
 # 2. Helper functions

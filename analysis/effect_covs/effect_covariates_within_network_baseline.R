@@ -19,17 +19,8 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
+source(require_file("analysis/utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
-
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(emmeans)
-library(ggpubr)
-library(readxl)
 
 # ============================================================
 # 1. Load and prepare data
@@ -62,38 +53,12 @@ demos_withinconn <- demos_withinconn %>%
 # Missingness check
 print(colSums(is.na(demos_withinconn)))
 
-# Network columns
-target_cols <- c(
-  "Vis", "SomMot", "DorsAttn",
-  "SalVentAttn", "Limbic", "Cont", "Default"
-)
-
 fd_threshold <- FD_THRESHOLD
 
 # drop rows that have other as dfcdx
 demos_withinconn <- demos_withinconn %>%
   filter(dcfdx != "other") %>%
   droplevels()
-
-# Network colors
-network_colors <- c(
-  "Vis" = "#9B59B6",
-  "SomMot" = "#6C8EBF",
-  "Default" = "#D36B78",
-  "Limbic" = "#C9D39A",
-  "DorsAttn" = "#3C8D2F",
-  "SalVentAttn" = "#C84CCF",
-  "Cont" = "#E5B53A"
-)
-
-# Categorical covariates to test/plot
-covariates_to_run <- c(
-  "msex",
-  "site",
-  "eyes",
-  "syn_bin",
-  "dcfdx"
-)
 
 # Adjusted model formula
 model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
