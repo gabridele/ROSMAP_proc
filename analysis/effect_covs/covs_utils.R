@@ -27,7 +27,7 @@ library(visreg)
 emm_options(pbkrtest.limit = 10000)
 emm_options(lmerTest.limit = 50000)
 
-fd_threshold <- 0.25
+fd_threshold <- FD_THRESHOLD
 
 EC_MSEX_LEVELS <- c(
   "female",
@@ -115,35 +115,6 @@ covariates_to_run <- c(
   "eyes",
   "syn_bin",
   "dcfdx"
-)
-
-make_long <- function(data) {
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(
-      network = factor(network, levels = target_cols)
-    ) %>%
-    filter(
-      !is.na(ses_num),
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(distortion_correction),
-      !is.na(eyes)
-    )
-}
-
-site_cols <- c(
-  "BNK" = "#0072B2",
-  "MG" = "#E69F00",
-  "RIRC" = "#009E73",
-  "UC" = "#d50700"
 )
 
 ec_factor_with_levels <- function(
@@ -240,12 +211,11 @@ ec_apply_fd_filter <- function(
     droplevels()
 }
 
-# Convert repeated model variables to stable R types without changing their
-# reference levels.
+# Convert model variables to stable types and apply the
+# prespecified factor/reference-level ordering.
 ec_prepare_model_variables <- function(
     data,
-    longitudinal = FALSE,
-    eyes_levels = NULL
+    longitudinal = FALSE
 ) {
 
   if (
@@ -465,20 +435,51 @@ ec_make_pairwise_brackets <- function(
 }
 
 # Print pairwise statistics without rounding the underlying result object.
-ec_print_pairwise_table <- function(pairwise_results, title) {
+ec_print_pairwise_table <- function(
+    pairwise_results,
+    title
+) {
+
   cat("\n============================================================\n")
   cat(title, "\n")
   cat("============================================================\n")
 
   pairwise_results %>%
     dplyr::mutate(
-      estimate = round(estimate, 4),
-      se = round(se, 4),
-      statistic = round(as.numeric(statistic), 3),
-      p_adj = signif(p_adj, 3)
+      estimate = round(
+        estimate,
+        4
+      ),
+
+      se = round(
+        se,
+        4
+      ),
+
+      statistic = round(
+        as.numeric(statistic),
+        3
+      ),
+
+      p_raw = signif(
+        p_raw,
+        3
+      ),
+
+      p_tukey = signif(
+        p_tukey,
+        3
+      ),
+
+      q_across = signif(
+        q_across,
+        3
+      )
     ) %>%
     tibble::as_tibble() %>%
-    print(n = Inf)
+    print(
+      n = Inf
+    )
 }
 
 # Print FD-model statistics without modifying values subsequently written to CSV.

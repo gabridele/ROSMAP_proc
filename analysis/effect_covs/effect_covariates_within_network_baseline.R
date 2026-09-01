@@ -33,12 +33,6 @@ demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 demos_withinconn <- demos_withinconn %>%
   ec_select_baseline() %>%
   ec_prepare_model_variables() %>%
-  mutate(
-    dcfdx = factor(
-      dcfdx,
-      levels = c("NCI", "MCI", "AD", "other")
-    )
-  ) %>%
   filter(dcfdx != "other") %>%
   droplevels()
 
@@ -261,10 +255,35 @@ all_pairwise_results <- bind_rows(
 
 all_pairwise_results_display <- all_pairwise_results %>%
   mutate(
-    estimate = round(estimate, 4),
-    se = round(se, 4),
-    statistic = round(as.numeric(statistic), 3),
-    p_adj = signif(p_adj, 3)
+    estimate = round(
+      estimate,
+      4
+    ),
+
+    se = round(
+      se,
+      4
+    ),
+
+    statistic = round(
+      as.numeric(statistic),
+      3
+    ),
+
+    p_raw = signif(
+      p_raw,
+      3
+    ),
+
+    p_tukey = signif(
+      p_tukey,
+      3
+    ),
+
+    q_across = signif(
+      q_across,
+      3
+    )
   ) %>%
   as_tibble()
 

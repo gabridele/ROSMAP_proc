@@ -32,12 +32,6 @@ demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 demos_withinconn <- demos_withinconn %>%
   ec_prepare_model_variables(longitudinal = TRUE) %>%
-  mutate(
-    dcfdx = factor(
-      dcfdx,
-      levels = c("NCI", "MCI", "AD", "other")
-    )
-  ) %>%
   filter(dcfdx != "other") %>%
   droplevels()
 
@@ -353,7 +347,7 @@ pre_results <- map(
 # ============================================================
 
 data_long_post <- data_long_pre %>%
-  ec_apply_fd_filter(threshold = fd_threshold)
+  ec_apply_fd_filter(threshold = FD_THRESHOLD)
 
 models_post <- fit_network_models(
   data_long_post
@@ -372,7 +366,7 @@ post_results <- map(
     covariate = .x,
     analysis_label = paste0(
       "Post-filtering, mean_FD < ",
-      fd_threshold
+      FD_THRESHOLD
     ),
     file_suffix = "postFDfilter"
   )

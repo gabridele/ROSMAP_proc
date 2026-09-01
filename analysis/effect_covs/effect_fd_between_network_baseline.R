@@ -36,7 +36,8 @@ print(colSums(is.na(demos_betweenconn)))
 # Keep the earliest numeric session per participant and normalize model types.
 demos_min_ses <- demos_betweenconn %>%
   ec_select_baseline() %>%
-  ec_prepare_model_variables()
+  ec_prepare_model_variables() %>%
+  
 
 fd_threshold <- FD_THRESHOLD
 
