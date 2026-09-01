@@ -19,15 +19,10 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
+
+source(file.path(ANALYSIS_DIR, "effect_covs", "covs_utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(ggeffects)
 
 # ============================================================
 # 1. Load and prepare data
@@ -35,196 +30,84 @@ library(ggeffects)
 
 demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
-# Missingness sanity check
+# Missingness sanity check before analysis-specific filtering.
 print(colSums(is.na(demos_withinconn)))
 
-# Keep the earliest numeric session per participant.
+# Keep the earliest numeric session per participant and normalize model types.
 demos_min_ses <- demos_withinconn %>%
-  mutate(ses_num = as.numeric(str_extract(ses_id, "\\d+"))) %>%
-  group_by(sub_id) %>%
-  arrange(ses_num, .by_group = TRUE) %>%
-  slice(1) %>%
-  ungroup() %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    eyes = factor(eyes),
-    syn_bin = factor(syn_bin),
-    dcfdx = factor(dcfdx)
-  )
-
-target_cols <- c(
-  "Vis", "SomMot", "DorsAttn",
-  "SalVentAttn", "Limbic", "Cont", "Default"
-)
+  ec_select_baseline() %>%
+  ec_prepare_model_variables()
 
 fd_threshold <- FD_THRESHOLD
 
-network_colors <- c(
-  "Vis" = "#9B59B6",
-  "SomMot" = "#6C8EBF",
-  "Default" = "#D36B78",
-  "Limbic" = "#C9D39A",
-  "DorsAttn" = "#3C8D2F",
-  "SalVentAttn" = "#C84CCF",
-  "Cont" = "#E5B53A"
-)
+# Adjusted baseline FD model.
+model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
+  syn_bin + eyes + dcfdx
 
 # ============================================================
 # 2. Helper functions
 # ============================================================
 
 make_long <- function(data) {
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(network = factor(network, levels = target_cols)) %>%
-    filter(
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(distortion_correction),
-      !is.na(eyes)
+  ec_make_long(
+    data = data,
+    measure_cols = target_cols,
+    measure_name = "network",
+    value_name = "within_conn",
+    required_vars = c(
+      "mean_FD", "msex", "site", "age_scandate",
+      "syn_bin", "eyes", "dcfdx"
     )
+  )
 }
 
 fit_fd_models <- function(data_long) {
-  
-  map_dfr(target_cols, function(net) {
-    
-    df_net <- data_long %>%
-      filter(network == net)
-    
-    model_adj <- lm(
-      within_conn ~ mean_FD + msex + site + age_scandate +
-        syn_bin + eyes + dcfdx,
-      data = df_net
+  models <- ec_fit_models_by_measure(
+    data_long = data_long,
+    measure_levels = target_cols,
+    measure_col = "network",
+    model_formula = model_formula,
+    mixed = FALSE,
+    optimizer = "bobyqa"
+  )
+
+  list(
+    models = models,
+    results = ec_fd_results_from_models(
+      models = models,
+      measure_col = "network",
+      measure_levels = target_cols
     )
-    
-    tibble(
-      network = net,
-      beta_adjusted = coef(model_adj)["mean_FD"],
-      t_val_adjusted = summary(model_adj)$coefficients["mean_FD", "t value"],
-      p_adjusted = summary(model_adj)$coefficients["mean_FD", "Pr(>|t|)"]
-    )
-  }) %>%
-    mutate(
-      q_adjusted = p.adjust(p_adjusted, method = "fdr"),
-      sig_adjusted = case_when(
-        q_adjusted < 0.001 ~ "***",
-        q_adjusted < 0.01  ~ "**",
-        q_adjusted < 0.05  ~ "*",
-        TRUE ~ ""
-      ),
-      label = sprintf(
-        "β = %.3f %s\nq = %.3g",
-        beta_adjusted,
-        sig_adjusted,
-        q_adjusted
-      ),
-      network = factor(network, levels = target_cols)
-    )
+  )
 }
 
-get_adjusted_predictions <- function(data_long) {
-  
-  map_dfr(target_cols, function(net) {
-    
-    df_net <- data_long %>%
-      filter(network == net)
-    
-    model_adj <- lm(
-      within_conn ~ mean_FD + msex + site + age_scandate +
-        syn_bin + eyes + dcfdx,
-      data = df_net
-    )
-    
-    predict_response(
-      model_adj,
-      terms = "mean_FD [all]"
-    ) %>%
-      as.data.frame() %>%
-      mutate(network = net)
-  }) %>%
-    mutate(network = factor(network, levels = target_cols))
+get_adjusted_predictions <- function(models) {
+  ec_fd_predictions_from_models(
+    models = models,
+    measure_col = "network",
+    measure_levels = target_cols,
+    fixed_only = FALSE
+  )
 }
 
 plot_fd_effects <- function(data_long, pred_adjusted, model_results, title) {
-  
-  label_pos <- data_long %>%
-    group_by(network) %>%
-    summarise(
-      x = max(mean_FD, na.rm = TRUE),
-      y = max(within_conn, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    left_join(model_results, by = "network")
-  
-  ggplot(data_long, aes(mean_FD, within_conn, color = network)) +
-    geom_point(alpha = 0.3, size = 1) +
-    
-    geom_ribbon(
-      data = pred_adjusted,
-      aes(x = x, ymin = conf.low, ymax = conf.high, fill = network),
-      inherit.aes = FALSE,
-      alpha = 0.25
-    ) +
-    
-    geom_line(
-      data = pred_adjusted,
-      aes(x = x, y = predicted, color = network),
-      inherit.aes = FALSE,
-      linewidth = 1
-    ) +
-    
-    geom_text(
-      data = label_pos,
-      aes(x = x, y = y, label = label),
-      inherit.aes = FALSE,
-      hjust = 1.05,
-      vjust = 1.1,
-      size = 3,
-      color = "black"
-    ) +
-    
-    facet_wrap(~ network, scales = "fixed") +
-    scale_color_manual(values = network_colors) +
-    scale_fill_manual(values = network_colors) +
-    theme_minimal(base_size = 13) +
-    theme(
-      legend.position = "none",
-      strip.text = element_text(face = "bold"),
-      panel.grid.minor = element_blank()
-    ) +
-    labs(
-      title = title,
-      x = "mean_FD",
-      y = "Within-network connectivity"
-    )
+  ec_plot_fd_effects(
+    data_long = data_long,
+    predictions = pred_adjusted,
+    model_results = model_results,
+    title = title,
+    measure_col = "network",
+    value_col = "within_conn",
+    palette = network_colors,
+    y_label = "Within-network connectivity",
+    label_box = FALSE,
+    label_size = 3,
+    rotate_x = FALSE
+  )
 }
 
 print_model_table <- function(model_results, title) {
-  
-  cat("\n============================================================\n")
-  cat(title, "\n")
-  cat("============================================================\n")
-  
-  model_results %>%
-    select(network, beta_adjusted, t_val_adjusted, p_adjusted, q_adjusted, sig_adjusted) %>%
-    mutate(
-      beta_adjusted = round(beta_adjusted, 4),
-      t_val_adjusted = round(t_val_adjusted, 3),
-      p_adjusted = signif(p_adjusted, 3),
-      q_adjusted = signif(q_adjusted, 3)
-    ) %>%
-    print()
+  ec_print_fd_model_table(model_results, title)
 }
 
 # ============================================================
@@ -233,8 +116,9 @@ print_model_table <- function(model_results, title) {
 
 data_long_pre <- make_long(demos_min_ses)
 
-model_results_pre <- fit_fd_models(data_long_pre)
-pred_adjusted_pre <- get_adjusted_predictions(data_long_pre)
+fit_pre <- fit_fd_models(data_long_pre)
+model_results_pre <- fit_pre$results
+pred_adjusted_pre <- get_adjusted_predictions(fit_pre$models)
 
 print_model_table(
   model_results_pre,
@@ -266,10 +150,11 @@ ggsave(
 # ============================================================
 
 data_long_post <- data_long_pre %>%
-  filter(mean_FD < fd_threshold)
+  ec_apply_fd_filter(threshold = fd_threshold)
 
-model_results_post <- fit_fd_models(data_long_post)
-pred_adjusted_post <- get_adjusted_predictions(data_long_post)
+fit_post <- fit_fd_models(data_long_post)
+model_results_post <- fit_post$results
+pred_adjusted_post <- get_adjusted_predictions(fit_post$models)
 
 print_model_table(
   model_results_post,

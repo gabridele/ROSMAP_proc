@@ -26,7 +26,6 @@ library(dplyr)
 library(readr)
 library(stringr)
 library(tidyr)
-library(purrr)
 
 # ============================================================
 # 1. Load longitudinal covariate-result tables
@@ -117,12 +116,11 @@ stats_df <- covs_long_df %>%
     comparison = case_when(
       str_detect(comparison, regex("within", ignore_case = TRUE)) ~ "within",
       str_detect(comparison, regex("between", ignore_case = TRUE)) ~ "between",
-      TRUE ~ comparison
+      TRUE ~ as.character(comparison)
     ),
-    
     covariate = as.character(covariate),
     contrast = as.character(contrast),
-    sig = ifelse(is.na(sig), "", sig),
+    sig_across = ifelse(is.na(sig_across), "", sig_across),
     t_value = as.numeric(statistic)
   ) %>%
   separate(
@@ -132,9 +130,7 @@ stats_df <- covs_long_df %>%
     remove = FALSE,
     fill = "right",
     extra = "merge"
-  )
-
-stats_df <- stats_df %>%
+  ) %>%
   separate(
     network_combo,
     into = c("network1_from_combo", "network2_from_combo"),
@@ -146,31 +142,22 @@ stats_df <- stats_df %>%
   mutate(
     network1 = case_when(
       comparison == "between" ~ network1_from_combo,
-      comparison == "within"  ~ as.character(network),
+      comparison == "within" ~ as.character(network),
       TRUE ~ NA_character_
     ),
     network2 = case_when(
       comparison == "between" ~ network2_from_combo,
-      comparison == "within"  ~ as.character(network),
+      comparison == "within" ~ as.character(network),
       TRUE ~ NA_character_
     ),
     network1 = str_replace(network1, "Network", ""),
     network2 = str_replace(network2, "Network", "")
   ) %>%
-  select(-network1_from_combo, -network2_from_combo)
-
-stats_df <- stats_df %>%
-  mutate(
-    comparison = as.character(comparison),
-    covariate = as.character(covariate),
-    contrast = as.character(contrast),
-    sig = ifelse(is.na(sig), "", sig),
-    t_value = as.numeric(statistic)
-  ) %>%
+  select(-network1_from_combo, -network2_from_combo) %>%
   filter(
     !is.na(covariate),
     !is.na(contrast),
-    !is.na(t_value),
+    is.finite(t_value),
     !is.na(network1),
     !is.na(network2)
   )
@@ -213,7 +200,7 @@ make_covariate_heatmap_grid_lower <- function(
       filter_status == filter_status_to_plot
     ) %>%
     mutate(
-      sig = ifelse(is.na(sig), "", sig),
+      sig_across = ifelse(is.na(sig_across), "", sig_across),
       t_value = as.numeric(t_value),
       network1 = as.character(network1),
       network2 = as.character(network2),
@@ -282,7 +269,7 @@ make_covariate_heatmap_grid_lower <- function(
       panel_col_id = pmin(contrast1_id, contrast2_id),
       
       t_value_plot = ifelse(flip_contrast, -t_value, t_value),
-      sig_plot = sig
+      sig_across_plot = sig_across
     ) %>%
     filter(panel_row_id > panel_col_id) %>%
     mutate(
@@ -302,7 +289,7 @@ make_covariate_heatmap_grid_lower <- function(
         row_net = network1,
         col_net = network2,
         t_value = t_value_plot,
-        sig = sig_plot
+        sig_across = sig_across_plot
       ),
     effects_df %>%
       filter(network1 != network2) %>%
@@ -312,20 +299,20 @@ make_covariate_heatmap_grid_lower <- function(
         row_net = network2,
         col_net = network1,
         t_value = t_value_plot,
-        sig = sig_plot
+        sig_across = sig_across_plot
       )
   ) %>%
     group_by(panel_row, panel_col, row_net, col_net) %>%
     summarise(
       t_value = first(t_value),
-      sig = first(sig),
+      sig_across = first(sig_across),
       .groups = "drop"
     ) %>%
     mutate(
       cell_label = ifelse(
         is.na(t_value),
         "",
-        paste0(sprintf("%.2f", t_value), sig)
+        paste0(sprintf("%.2f", t_value), sig_across)
       ),
       row_net = factor(row_net, levels = rev(network_order)),
       col_net = factor(col_net, levels = network_order)
@@ -449,7 +436,7 @@ make_covariate_heatmaps <- function(
       "Vis", "SomMot", "DorsAttn",
       "SalVentAttn", "Limbic", "Cont", "Default"
     ),
-    text_size = 10,
+    text_size = 7,
     fill_limits = NULL,
     save_plots = FALSE,
     save_dir = output_dir("heatmaps")
@@ -465,7 +452,7 @@ make_covariate_heatmaps <- function(
       filter_status == filter_status_to_plot
     ) %>%
     mutate(
-      sig = ifelse(is.na(sig), "", sig),
+      sig_across = ifelse(is.na(sig_across), "", sig_across),
       t_value = as.numeric(t_value),
       network1 = as.character(network1),
       network2 = as.character(network2),
@@ -509,7 +496,7 @@ make_covariate_heatmaps <- function(
           row_net = network1,
           col_net = network2,
           t_value = t_value,
-          sig = sig
+          sig_across = sig_across
         ),
       contrast_df %>%
         filter(network1 != network2) %>%
@@ -517,20 +504,20 @@ make_covariate_heatmaps <- function(
           row_net = network2,
           col_net = network1,
           t_value = t_value,
-          sig = sig
+          sig_across = sig_across
         )
     ) %>%
       group_by(row_net, col_net) %>%
       summarise(
         t_value = first(t_value),
-        sig = first(sig),
+        sig_across = first(sig_across),
         .groups = "drop"
       ) %>%
       mutate(
         cell_label = ifelse(
           is.na(t_value),
           "",
-          paste0(sprintf("%.2f", t_value), sig)
+          paste0(sprintf("%.2f", t_value), sig_across)
         ),
         row_net = factor(row_net, levels = rev(network_order)),
         col_net = factor(col_net, levels = network_order)
@@ -645,14 +632,16 @@ msex_heatmaps_pre <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "msex",
   filter_status_to_plot = "pre",
-  fill_limits = msex_t_limits
+  fill_limits = msex_t_limits,
+  save_plots = TRUE
 )
 
 msex_heatmaps_post <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "msex",
   filter_status_to_plot = "post",
-  fill_limits = msex_t_limits
+  fill_limits = msex_t_limits,
+  save_plots = TRUE
 )
 # eyes
 eyes_t_limits <- get_shared_t_limits(stats_df, "eyes")
@@ -661,14 +650,16 @@ eyes_heatmaps_pre <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "eyes",
   filter_status_to_plot = "pre",
-  fill_limits = eyes_t_limits
+  fill_limits = eyes_t_limits,
+  save_plots = TRUE
 )
 
 eyes_heatmaps_post <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "eyes",
   filter_status_to_plot = "post",
-  fill_limits = eyes_t_limits
+  fill_limits = eyes_t_limits,
+  save_plots = TRUE
 )
 
 syn_t_limits <- get_shared_t_limits(stats_df, "syn_bin")
@@ -676,14 +667,16 @@ syn_heatmaps_pre <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "syn_bin",
   filter_status_to_plot = "pre",
-  fill_limits = syn_t_limits
+  fill_limits = syn_t_limits,
+  save_plots = TRUE
 )
 
 syn_heatmaps_post <- make_covariate_heatmaps(
   df = stats_df,
   covariate_to_plot = "syn_bin",
   filter_status_to_plot = "post",
-  fill_limits = syn_t_limits
+  fill_limits = syn_t_limits,
+  save_plots = TRUE
 )
 
 
@@ -712,22 +705,34 @@ print(p_site_post_grid)
 p_dx_pre_grid <- make_covariate_heatmap_grid_lower(
   df = stats_df,
   covariate_to_plot = "dcfdx",
-  filter_status_to_plot = "pre"
+  filter_status_to_plot = "pre",
+  fill_limits = dcfdx_t_limits
 )
 
 p_dx_post_grid <- make_covariate_heatmap_grid_lower(
   df = stats_df,
   covariate_to_plot = "dcfdx",
-  filter_status_to_plot = "post"
+  filter_status_to_plot = "post",
+  fill_limits = dcfdx_t_limits
 )
 
 print(p_dx_pre_grid)
 print(p_dx_post_grid)
 
-ggsave(
-  filename = output("heatmaps", "heatmap_grid_site_pre.pdf"),
-  plot = p_site_pre_grid,
-  width = 18,
-  height = 10,
-  dpi = 300
+grid_plots <- list(
+  site_pre = p_site_pre_grid,
+  site_post = p_site_post_grid,
+  diagnosis_pre = p_dx_pre_grid,
+  diagnosis_post = p_dx_post_grid
 )
+
+for (plot_name in names(grid_plots)) {
+  ggsave(
+    filename = output("heatmaps", paste0("heatmap_grid_", plot_name, ".pdf")),
+    plot = grid_plots[[plot_name]],
+    width = 18,
+    height = 10,
+    units = "in",
+    limitsize = FALSE
+  )
+}

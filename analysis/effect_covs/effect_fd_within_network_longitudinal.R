@@ -19,20 +19,11 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
+
+source(file.path(ANALYSIS_DIR, "effect_covs", "covs_utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
-library(ggplot2)
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(ggeffects)
-library(lme4)
-library(lmerTest)
-library(visreg)
 library(patchwork)
-library(svglite)
 
 
 # ============================================================
@@ -44,69 +35,27 @@ demos_withinconn <- read.csv(
 )
 
 demos_withinconn <- demos_withinconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses_id, "\\d+")),
-    sub_id = factor(sub_id)
-  )
-
-
-# Networks to analyse
-target_cols <- c(
-  "Vis",
-  "SomMot",
-  "DorsAttn",
-  "SalVentAttn",
-  "Limbic",
-  "Cont",
-  "Default"
-)
-
+  ec_add_session_number() %>%
+  ec_prepare_model_variables(longitudinal = TRUE)
 
 # FD exclusion threshold
 fd_threshold <- FD_THRESHOLD
-
-# Network colours
-network_colors <- c(
-  "Vis" = "#9B59B6",
-  "SomMot" = "#6C8EBF",
-  "Default" = "#D36B78",
-  "Limbic" = "#C9D39A",
-  "DorsAttn" = "#3C8D2F",
-  "SalVentAttn" = "#C84CCF",
-  "Cont" = "#E5B53A"
-)
-
 
 # ============================================================
 # 2. Convert network data to long format
 # ============================================================
 
 make_long <- function(data) {
-
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(
-      network = factor(
-        network,
-        levels = target_cols
-      )
-    ) %>%
-    filter(
-      !is.na(sub_id),
-      !is.na(ses_num),
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(eyes),
-      !is.na(syn_bin),
-      !is.na(dcfdx)
+  ec_make_long(
+    data = data,
+    measure_cols = target_cols,
+    measure_name = "network",
+    value_name = "within_conn",
+    required_vars = c(
+      "sub_id", "ses_num", "mean_FD", "msex", "site",
+      "age_scandate", "eyes", "syn_bin", "dcfdx"
     )
+  )
 }
 
 
@@ -121,9 +70,7 @@ data_long_all <- make_long(
 
 # Keep observations with mean FD < threshold
 data_long_fd_filtered <- data_long_all %>%
-  filter(
-    mean_FD < fd_threshold
-  )
+  ec_apply_fd_filter(threshold = fd_threshold)
 
 
 # ============================================================
@@ -201,7 +148,6 @@ out_dir <- output_dir("fd_within_longitudinal")
 
 fd_formula <- within_conn ~
   mean_FD +
-  ses_num +
   msex +
   site +
   age_scandate +
@@ -226,93 +172,22 @@ fixed_y_breaks <- seq(
 # ============================================================
 
 fit_fd_models <- function(data_long) {
-
-  models <- map(
-    target_cols,
-    function(net) {
-
-      df_net <- data_long %>%
-        filter(
-          network == net
-        )
-
-      lmer(
-        fd_formula,
-        data = df_net,
-        control = lmerControl(
-          optimizer = "bobyqa"
-        )
-      )
-    }
-  ) %>%
-    set_names(
-      target_cols
-    )
-
-
-  # ----------------------------------------------------------
-  # Extract FD coefficient from each network model
-  # ----------------------------------------------------------
-
-  results <- imap_dfr(
-    models,
-    function(model, net) {
-
-      coefs <- summary(model)$coefficients
-
-      tibble(
-        network = net,
-
-        beta_adjusted = coefs[
-          "mean_FD",
-          "Estimate"
-        ],
-
-        t_val_adjusted = coefs[
-          "mean_FD",
-          "t value"
-        ],
-
-        p_adjusted = coefs[
-          "mean_FD",
-          "Pr(>|t|)"
-        ]
-      )
-    }
-  ) %>%
-
-    mutate(
-
-      # BH/FDR correction across the 7 networks
-      q_adjusted = p.adjust(
-        p_adjusted,
-        method = "BH"
-      ),
-
-      sig_adjusted = case_when(
-        q_adjusted < 0.001 ~ "***",
-        q_adjusted < 0.01  ~ "**",
-        q_adjusted < 0.05  ~ "*",
-        TRUE ~ ""
-      ),
-
-      label = sprintf(
-        "β = %.3f %s\nq = %.3g",
-        beta_adjusted,
-        sig_adjusted,
-        q_adjusted
-      ),
-
-      network = factor(
-        network,
-        levels = target_cols
-      )
-    )
-
+  models <- ec_fit_models_by_measure(
+    data_long = data_long,
+    measure_levels = target_cols,
+    measure_col = "network",
+    model_formula = fd_formula,
+    mixed = TRUE,
+    optimizer = "bobyqa"
+  )
 
   list(
     models = models,
-    results = results
+    results = ec_fd_results_from_models(
+      models = models,
+      measure_col = "network",
+      measure_levels = target_cols
+    )
   )
 }
 
@@ -322,29 +197,12 @@ fit_fd_models <- function(data_long) {
 # ============================================================
 
 get_adjusted_predictions <- function(models) {
-
-  imap_dfr(
-    models,
-    function(model, net) {
-
-      predict_response(
-        model,
-        terms = "mean_FD [all]",
-        type = "fixed"
-      ) %>%
-        as.data.frame() %>%
-        mutate(
-          network = net
-        )
-    }
-  ) %>%
-
-    mutate(
-      network = factor(
-        network,
-        levels = target_cols
-      )
-    )
+  ec_fd_predictions_from_models(
+    models = models,
+    measure_col = "network",
+    measure_levels = target_cols,
+    fixed_only = TRUE
+  )
 }
 
 
@@ -777,35 +635,14 @@ plot_fd_partial_residuals <- function(
 # 12. Save figure as PDF + editable SVG
 # ============================================================
 
-save_figure <- function(
-  plot,
-  filename,
-  width = 13,
-  height = 7
-) {
-
-  # PDF — Cairo handles Unicode characters such as β
-  ggsave(
-    filename = file.path(
-      out_dir,
-      paste0(filename, ".pdf")
-    ),
+save_figure <- function(plot, filename, width = 13, height = 7) {
+  ec_save_pdf_svg(
     plot = plot,
-    device = cairo_pdf,
+    out_dir = out_dir,
+    filename = filename,
     width = width,
-    height = height
-  )
-
-  # SVG for downstream vector editing
-  ggsave(
-    filename = file.path(
-      out_dir,
-      paste0(filename, ".svg")
-    ),
-    plot = plot,
-    device = svglite::svglite,
-    width = width,
-    height = height
+    height = height,
+    cairo = TRUE
   )
 }
 
@@ -814,58 +651,8 @@ save_figure <- function(
 # 13. Print model table
 # ============================================================
 
-print_model_table <- function(
-  results,
-  title
-) {
-
-  cat(
-    "\n============================================================\n",
-    title,
-    "\n============================================================\n",
-    sep = ""
-  )
-
-
-  results %>%
-
-    select(
-      network,
-      beta_adjusted,
-      t_val_adjusted,
-      p_adjusted,
-      q_adjusted,
-      sig_adjusted
-    ) %>%
-
-    mutate(
-
-      beta_adjusted = round(
-        beta_adjusted,
-        4
-      ),
-
-      t_val_adjusted = round(
-        t_val_adjusted,
-        3
-      ),
-
-      p_adjusted = signif(
-        p_adjusted,
-        3
-      ),
-
-      q_adjusted = signif(
-        q_adjusted,
-        3
-      )
-    ) %>%
-
-    as_tibble() %>%
-
-    print(
-      n = Inf
-    )
+print_model_table <- function(model_results, title) {
+  ec_print_fd_model_table(model_results, title)
 }
 
 
@@ -1131,67 +918,31 @@ selected_networks <- c(
 # Extract partial residual data for selected networks
 # ------------------------------------------------------------
 
-get_selected_residuals <- function(
-  models,
-  model_results,
-  condition_label
-) {
-
-  # Only use the three selected networks
-  selected_models <- models[
-    selected_networks
-  ]
-
-
-  # Get partial residual points + fitted lines
+get_selected_residuals <- function(models, model_results, condition_label) {
   vr <- get_partial_residual_data(
-    selected_models,
+    models[selected_networks],
     predictor = "mean_FD"
   )
 
-
-  # Add condition label
   points <- vr$points %>%
-    filter(
-      network %in% selected_networks
-    ) %>%
     mutate(
-      network = factor(
-        network,
-        levels = selected_networks
-      ),
+      network = factor(network, levels = selected_networks),
       condition = condition_label
     )
-
 
   lines <- vr$lines %>%
-    filter(
-      network %in% selected_networks
-    ) %>%
     mutate(
-      network = factor(
-        network,
-        levels = selected_networks
-      ),
+      network = factor(network, levels = selected_networks),
       condition = condition_label
     )
 
-
-  # Model statistics for labels
   labels <- model_results %>%
-    filter(
-      network %in% selected_networks
-    ) %>%
+    filter(network %in% selected_networks) %>%
     mutate(
-      network = factor(
-        network,
-        levels = selected_networks
-      ),
+      network = factor(network, levels = selected_networks),
       condition = condition_label,
       x = Inf,
       y = Inf,
-
-      # ASCII "beta" avoids PDF encoding problems
       plot_label = sprintf(
         "beta = %.3f %s\nq = %.3g",
         beta_adjusted,
@@ -1200,12 +951,7 @@ get_selected_residuals <- function(
       )
     )
 
-
-  list(
-    points = points,
-    lines = lines,
-    labels = labels
-  )
+  list(points = points, lines = lines, labels = labels)
 }
 
 
@@ -1242,220 +988,59 @@ pres_filtered <- get_selected_residuals(
 
 
 # ------------------------------------------------------------
-# BEFORE FD exclusion
+# Shared selected-network panel
 # ------------------------------------------------------------
 
-p_before <- ggplot(
-  pres_all$points,
-  aes(
-    x = x,
-    y = partial_residual,
-    color = network
-  )
-) +
-
-  geom_point(
-    alpha = 0.35,
-    size = 0.8
+make_selected_residual_panel <- function(residuals, title = NULL) {
+  ggplot(
+    residuals$points,
+    aes(x = x, y = partial_residual, color = network)
   ) +
-
-  geom_line(
-    data = pres_all$lines,
-    aes(
-      x = x,
-      y = fitted,
-      color = network
-    ),
-    inherit.aes = FALSE,
-    linewidth = 0.8
-  ) +
-
-  geom_label(
-    data = pres_all$labels,
-    aes(
-      x = x,
-      y = y,
-      label = plot_label
-    ),
-    inherit.aes = FALSE,
-    hjust = 1.05,
-    vjust = 1.1,
-    size = 3.2,
-    color = "black",
-    fill = "white",
-    alpha = 0.85,
-    linewidth = 0
-  ) +
-
-  facet_grid(
-    "Before FD exclusion" ~ network
-  ) +
-
-  scale_color_manual(
-    values = network_colors
-  ) +
-
-  scale_y_continuous(
-    breaks = fixed_y_breaks
-  ) +
-
-  coord_cartesian(
-    ylim = fixed_y_limits
-  ) +
-
-  labs(
-    x = "Mean framewise displacement",
-    y = "Within-network connectivity\n(partial residual)"
-  ) +
-
-  theme_minimal(base_size = 10) +
-
-  theme(
-    legend.position = "none",
-
-    strip.text.x = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    # "Before FD exclusion" on side
-    strip.text.y = element_text(
-      size = 10,
-      face = "bold"
-    ),
-
-    axis.title.x = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    axis.title.y = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    axis.text.x = element_text(size = 9),
-    axis.text.y = element_text(size = 9),
-
-    panel.grid.minor = element_blank(),
-
-    panel.spacing.x = unit(
-      0.35,
-      "cm"
+    geom_point(alpha = 0.35, size = 0.8) +
+    geom_line(
+      data = residuals$lines,
+      aes(x = x, y = fitted, color = network),
+      inherit.aes = FALSE,
+      linewidth = 0.8
+    ) +
+    geom_label(
+      data = residuals$labels,
+      aes(x = x, y = y, label = plot_label),
+      inherit.aes = FALSE,
+      hjust = 1.05,
+      vjust = 1.1,
+      size = 3.2,
+      color = "black",
+      fill = "white",
+      alpha = 0.85,
+      linewidth = 0
+    ) +
+    facet_grid(condition ~ network) +
+    scale_color_manual(values = network_colors) +
+    scale_y_continuous(breaks = fixed_y_breaks) +
+    coord_cartesian(ylim = fixed_y_limits) +
+    labs(
+      title = title,
+      x = "Mean framewise displacement",
+      y = "Within-network connectivity\n(partial residual)"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(size = 11, face = "bold"),
+      strip.text = element_text(size = 11, face = "bold"),
+      axis.title = element_text(size = 11, face = "bold"),
+      axis.text = element_text(size = 9),
+      panel.grid.minor = element_blank(),
+      panel.spacing.x = grid::unit(0.35, "cm")
     )
-  )
+}
 
-
-# ------------------------------------------------------------
-# AFTER FD exclusion
-# ------------------------------------------------------------
-
-p_after <- ggplot(
-  pres_filtered$points,
-  aes(
-    x = x,
-    y = partial_residual,
-    color = network
-  )
-) +
-
-  geom_point(
-    alpha = 0.35,
-    size = 0.8
-  ) +
-
-  geom_line(
-    data = pres_filtered$lines,
-    aes(
-      x = x,
-      y = fitted,
-      color = network
-    ),
-    inherit.aes = FALSE,
-    linewidth = 0.8
-  ) +
-
-  geom_label(
-    data = pres_filtered$labels,
-    aes(
-      x = x,
-      y = y,
-      label = plot_label
-    ),
-    inherit.aes = FALSE,
-    hjust = 1.05,
-    vjust = 1.1,
-    size = 3.2,
-    color = "black",
-    fill = "white",
-    alpha = 0.85,
-    linewidth = 0
-  ) +
-  facet_grid(
-    "After FD exclusion" ~ network
-  ) +
-
-  scale_color_manual(
-    values = network_colors
-  ) +
-
-  scale_y_continuous(
-    breaks = fixed_y_breaks
-  ) +
-
-  coord_cartesian(
-    ylim = fixed_y_limits
-  ) +
-
-  labs(
-    title = paste0("FD < ", fd_threshold),
-    x = "Mean framewise displacement",
-    y = "Within-network connectivity\n(partial residual)"
-  ) +
-
-  theme_minimal(
-    base_size = 10
-  ) +
-
-  theme(
-    legend.position = "none",
-
-    plot.title = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    strip.text = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    axis.title.x = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    axis.title.y = element_text(
-      size = 11,
-      face = "bold"
-    ),
-
-    axis.text.x = element_text(
-      size = 9
-    ),
-
-    axis.text.y = element_text(
-      size = 9
-    ),
-
-    panel.grid.minor = element_blank(),
-
-    panel.spacing.x = unit(
-      0.35,
-      "cm"
-    )
-  )
-
+p_before <- make_selected_residual_panel(pres_all)
+p_after <- make_selected_residual_panel(
+  pres_filtered,
+  title = paste0("FD < ", fd_threshold)
+)
 
 # ============================================================
 # Stack the two rows

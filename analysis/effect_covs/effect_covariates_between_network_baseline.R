@@ -19,7 +19,8 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
-source(file.path("analysis", "utils.R"))
+
+source(file.path(ANALYSIS_DIR, "effect_covs", "covs_utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 
@@ -29,39 +30,24 @@ rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 demos_betweenconn <- read.csv(require_file(demos("demos_conn.csv")))
 
-# Add numeric session
-demos_betweenconn <- demos_betweenconn %>%
-  mutate(
-    ses_num = as.numeric(str_extract(ses_id, "\\d+"))
-  )
-
-# The prepared analysis table already contains diagnosis and SyN variables.
-
-# Missingness check
+# Missingness check before analysis-specific filtering.
 print(colSums(is.na(demos_betweenconn)))
 
-# Keep lowest session per subject
+# Keep the earliest numeric session per participant and normalize model types.
 demos_min_ses <- demos_betweenconn %>%
-  group_by(sub_id) %>%
-  arrange(ses_num) %>%
-  slice(1) %>%
-  ungroup()
+  ec_select_baseline() %>%
+  ec_prepare_model_variables() %>%
+  mutate(
+    dcfdx = factor(
+      dcfdx,
+      levels = c("NCI", "MCI", "AD", "other")
+    )
+  ) %>%
+  filter(dcfdx != "other") %>%
+  droplevels()
 
 fd_threshold <- FD_THRESHOLD
 
-# Type conversion
-demos_min_ses <- demos_min_ses %>%
-  mutate(
-    mean_FD = as.numeric(mean_FD),
-    msex = factor(msex),
-    site = factor(site),
-    age_scandate = as.numeric(age_scandate),
-    eyes = factor(eyes),
-    dcfdx = factor(dcfdx),
-    syn_bin = factor(syn_bin)
-  )
-
-print(colSums(is.na(demos_min_ses)))
 # ============================================================
 # 2. Colors for between-network combos
 # ============================================================
@@ -81,334 +67,140 @@ model_formula <- between_conn ~ mean_FD + msex + site + age_scandate +
 # ============================================================
 
 make_long <- function(data) {
-  
-  long_raw <- data %>%
-    pivot_longer(
-      cols = all_of(target_combos),
-      names_to = "network_combo",
-      values_to = "between_conn"
-    ) %>%
-    mutate(
-      network_combo = factor(network_combo, levels = target_combos)
-    )
-  
-  cat("\nRows after pivot:", nrow(long_raw), "\n")
-  
-  cat("\nMissingness before model filter:\n")
-  print(
-    long_raw %>%
-      summarise(
-        n = n(),
-        mean_FD_missing = sum(is.na(mean_FD)),
-        between_conn_missing = sum(is.na(between_conn)),
-        msex_missing = sum(is.na(msex)),
-        site_missing = sum(is.na(site)),
-        age_scandate_missing = sum(is.na(age_scandate)),
-        syn_bin_missing = sum(is.na(syn_bin)),
-        eyes_missing = sum(is.na(eyes)),
-        dcfdx_missing = sum(is.na(dcfdx))
-      )
+  ec_make_long(
+    data = data,
+    measure_cols = target_combos,
+    measure_name = "network_combo",
+    value_name = "between_conn",
+    required_vars = c(
+      "mean_FD", "msex", "site", "age_scandate",
+      "syn_bin", "eyes", "dcfdx"
+    ),
+    verbose = TRUE
   )
-  
-  long_filtered <- long_raw %>%
-    filter(
-      !is.na(mean_FD),
-      !is.na(between_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(syn_bin),
-      !is.na(eyes),
-      !is.na(dcfdx)
-    ) %>%
-    droplevels()
-  
-  cat("\nRows after model filter:", nrow(long_filtered), "\n")
-  
-  long_filtered
 }
 
-sig_from_p <- function(p) {
-  case_when(
-    p < 0.001 ~ "***",
-    p < 0.01  ~ "**",
-    p < 0.05  ~ "*",
-    TRUE ~ ""
+
+# ============================================================
+# 3. Fit adjusted models once per dataset
+# ============================================================
+
+fit_network_models <- function(data_long) {
+  ec_fit_models_by_measure(
+    data_long = data_long,
+    measure_levels = target_combos,
+    measure_col = "network_combo",
+    model_formula = model_formula,
+    mixed = FALSE
   )
 }
 
 # ============================================================
-# 3. Fit adjusted model and add predicted values
+# 4. Add fitted values from the model list
 # ============================================================
 
-get_predicted_data <- function(data_long) {
-  
-  map_dfr(target_combos, function(net) {
-    
-    df_net <- data_long %>%
-      filter(network_combo == net) %>%
-      droplevels()
-    
-    model <- lm(
-      between_conn ~ mean_FD + msex + site + age_scandate +
-  syn_bin + eyes + dcfdx,
-      data = df_net
-    )
-    
-    df_net %>%
-      mutate(
-        predicted_conn = fitted(model)
-      )
-  }) %>%
-    mutate(
-      network_combo = factor(network_combo, levels = target_combos)
-    )
+get_predicted_data <- function(data_long, models) {
+  ec_get_fitted_data(
+    data_long = data_long,
+    models = models,
+    measure_levels = target_combos,
+    measure_col = "network_combo"
+  )
 }
 
 # ============================================================
 # 4. Model-based pairwise comparisons with emmeans
 # ============================================================
 
-fit_model_pairwise <- function(data_long, covariate) {
-  
-  map_dfr(target_combos, function(net) {
-    
-    df_net <- data_long %>%
-      filter(network_combo == net) %>%
-      droplevels()
-    
-    model <- lm(
-      between_conn ~ mean_FD + msex + site + age_scandate +
-  syn_bin + eyes + dcfdx,
-      data = df_net
-    )
-    
-    emm <- emmeans(
-      model,
-      specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "tukey"
-    )
-    
-    pairwise_df <- as.data.frame(emm$contrasts)
-    
-    stat_col <- intersect(c("t.ratio", "z.ratio"), names(pairwise_df))[1]
-    
-    pairwise_df %>%
-      transmute(
-        network_combo = net,
-        covariate = covariate,
-        contrast = contrast,
-        estimate = estimate,
-        se = SE,
-        df = if ("df" %in% names(pairwise_df)) df else NA_real_,
-        statistic = .data[[stat_col]],
-        p_adj = p.value
-      )
-  }) %>%
-    mutate(
-      sig = sig_from_p(p_adj),
-      network_combo = factor(network_combo, levels = target_combos)
-    )
-}
-
-# ============================================================
-# 5. Bracket annotations
-# ============================================================
-
-make_pairwise_brackets <- function(predicted_data, pairwise_results, covariate) {
-  
-  x_levels <- levels(factor(predicted_data[[covariate]]))
-  
-  y_positions <- predicted_data %>%
-    group_by(network_combo) %>%
-    summarise(
-      y_max = max(predicted_conn, na.rm = TRUE),
-      y_min = min(predicted_conn, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      y_range = y_max - y_min,
-      y_range = ifelse(y_range == 0, 1, y_range)
-    )
-  
-  pairwise_results %>%
-    filter(p_adj < 0.05) %>%
-    separate(
-      contrast,
-      into = c("group1", "group2"),
-      sep = " - ",
-      remove = FALSE
-    ) %>%
-    mutate(
-      group1_clean = str_remove(group1, paste0("^", covariate)),
-      group2_clean = str_remove(group2, paste0("^", covariate)),
-      group1 = ifelse(group1 %in% x_levels, group1, group1_clean),
-      group2 = ifelse(group2 %in% x_levels, group2, group2_clean)
-    ) %>%
-    select(-group1_clean, -group2_clean) %>%
-    left_join(y_positions, by = "network_combo") %>%
-    group_by(network_combo) %>%
-    arrange(p_adj, .by_group = TRUE) %>%
-    mutate(
-      bracket_number = row_number(),
-      bracket_side = ifelse(bracket_number %% 2 == 1, "above", "below"),
-      bracket_rank = ceiling(bracket_number / 2),
-      y.position = ifelse(
-        bracket_side == "above",
-        y_max + bracket_rank * 0.08 * y_range,
-        y_min - bracket_rank * 0.08 * y_range
-      ),
-      label = sig
-    ) %>%
-    ungroup()
+fit_model_pairwise <- function(models, covariate) {
+  ec_pairwise_from_models(
+    models = models,
+    covariate = covariate,
+    measure_col = "network_combo",
+    measure_levels = target_combos
+  )
 }
 
 # ============================================================
 # 6. Plot predicted distributions
 # ============================================================
 
-plot_factor_covariate <- function(data_long, covariate, pairwise_results, title,
-                                  y_limits = NULL,
-                                  y_breaks = NULL) {
-  
-  predicted_data <- get_predicted_data(data_long)
-  
-  pairwise_annot <- make_pairwise_brackets(
-    predicted_data = predicted_data,
-    pairwise_results = pairwise_results,
-    covariate = covariate
-  )
-  
-  p <- ggplot(
+plot_factor_covariate <- function(
     predicted_data,
-    aes(
-      x = .data[[covariate]],
-      y = predicted_conn,
-      color = network_combo,
-      fill = network_combo
-    )
-  ) +
-    geom_violin(
-      alpha = 0.18,
-      linewidth = 0.3,
-      trim = FALSE
-    ) +
-    geom_boxplot(
-      width = 0.30,
-      alpha = 0.75,
-      outlier.shape = NA,
-      linewidth = 0.35
-    ) +
-    geom_jitter(
-      width = 0.12,
-      alpha = 0.09,
-      size = 0.4
-    ) +
-    facet_wrap(~ network_combo, scales = "fixed") +
-    scale_x_discrete(drop = FALSE) +
-    scale_color_manual(values = between_network_colors) +
-    scale_fill_manual(values = between_network_colors) +
-    scale_y_continuous(
-      breaks = y_breaks,
-      expand = expansion(mult = c(0.18, 0.18))
-    ) +
-    coord_cartesian(
-      ylim = y_limits
-    ) +
-    theme_minimal(base_size = 13) +
-    theme(
-      legend.position = "none",
-      strip.text = element_text(face = "bold"),
-      panel.grid.minor = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1)
-    ) +
-    labs(
-      title = title,
-      subtitle = "Violin/box/jitter show model-predicted values; stars show Tukey-adjusted emmeans comparisons",
-      x = covariate,
-      y = "Predicted between-network connectivity"
-    )
-  
-  if (nrow(pairwise_annot) > 0) {
-    p <- p +
-      ggpubr::stat_pvalue_manual(
-        pairwise_annot,
-        label = "label",
-        xmin = "group1",
-        xmax = "group2",
-        y.position = "y.position",
-        tip.length = 0,
-        size = 4,
-        bracket.size = 0.35,
-        hide.ns = TRUE
-      )
-  }
-  
-  return(p)
+    covariate,
+    pairwise_results,
+    title,
+    y_limits = NULL,
+    y_breaks = NULL
+) {
+  ec_plot_factor_distribution(
+    plot_data = predicted_data,
+    covariate = covariate,
+    pairwise_results = pairwise_results,
+    title = title,
+    subtitle = paste0(
+      "Violin/box/jitter show model-predicted values; ",
+      "stars indicate BH-FDR-corrected emmeans contrasts across connectivity outcomes"
+    ),
+    y_label = "Predicted between-network connectivity",
+    measure_col = "network_combo",
+    value_col = "predicted_conn",
+    group_col = covariate,
+    palette = between_network_colors,
+    y_limits = y_limits,
+    y_breaks = y_breaks
+  )
 }
 
 # ============================================================
 # 7. Print pairwise tables
 # ============================================================
 
-print_pairwise_table <- function(pairwise_results, title) {
-  
-  cat("\n============================================================\n")
-  cat(title, "\n")
-  cat("============================================================\n")
-  
-  pairwise_results %>%
-    mutate(
-      estimate = round(estimate, 4),
-      se = round(se, 4),
-      statistic = round(as.numeric(statistic), 3),
-      p_adj = signif(p_adj, 3)
-    ) %>%
-    as_tibble() %>%
-    print(n = Inf)
-}
+print_pairwise_table <- ec_print_pairwise_table
 
 # ============================================================
 # 8. Wrapper
 # ============================================================
 
-run_factor_analysis <- function(data_long, covariate, analysis_label, file_suffix,
-                                y_limits = NULL,
-                                y_breaks = NULL) {
-  
-  pairwise_results <- fit_model_pairwise(
-    data_long = data_long,
-    covariate = covariate
-  )
-  
+run_factor_analysis <- function(
+    predicted_data,
+    models,
+    covariate,
+    analysis_label,
+    file_suffix,
+    y_limits = NULL,
+    y_breaks = NULL
+) {
+  pairwise_results <- fit_model_pairwise(models, covariate)
+
   print_pairwise_table(
     pairwise_results,
     paste0(analysis_label, ": model-based pairwise comparisons for ", covariate)
   )
-  
+
   p <- plot_factor_covariate(
-    data_long = data_long,
+    predicted_data = predicted_data,
     covariate = covariate,
     pairwise_results = pairwise_results,
     title = paste0(analysis_label, ": model-predicted distribution by ", covariate),
     y_limits = y_limits,
     y_breaks = y_breaks
   )
-  
+
   print(p)
-  
+
   ggsave(
-    filename = output("covariates", paste0("betweenconn_predicted_", covariate, "_", file_suffix, ".png")),
+    filename = output(
+      "covariates",
+      paste0("betweenconn_predicted_", covariate, "_", file_suffix, ".png")
+    ),
     plot = p,
     width = 13,
     height = 9,
     dpi = 300
   )
-  
-  list(
-    pairwise = pairwise_results,
-    plot = p
-  )
+
+  list(pairwise = pairwise_results, plot = p)
 }
 
 fixed_y_limits <- c(-0.2, 0.25)
@@ -419,11 +211,14 @@ fixed_y_breaks <- seq(-0.2, 0.25, by = 0.25)
 # ============================================================
 
 data_long_pre <- make_long(demos_min_ses)
+models_pre <- fit_network_models(data_long_pre)
+predicted_pre <- get_predicted_data(data_long_pre, models_pre)
 
 pre_results <- map(
   covariates_to_run,
   ~ run_factor_analysis(
-    data_long = data_long_pre,
+    predicted_data = predicted_pre,
+    models = models_pre,
     covariate = .x,
     analysis_label = "Pre-filtering",
     file_suffix = "preFDfilter",
@@ -439,13 +234,15 @@ names(pre_results) <- covariates_to_run
 # ============================================================
 
 data_long_post <- data_long_pre %>%
-  filter(mean_FD < fd_threshold) %>%
-  droplevels()
+  ec_apply_fd_filter(threshold = fd_threshold)
+models_post <- fit_network_models(data_long_post)
+predicted_post <- get_predicted_data(data_long_post, models_post)
 
 post_results <- map(
   covariates_to_run,
   ~ run_factor_analysis(
-    data_long = data_long_post,
+    predicted_data = predicted_post,
+    models = models_post,
     covariate = .x,
     analysis_label = paste0("Post-filtering, mean_FD < ", fd_threshold),
     file_suffix = "postFDfilter",
@@ -471,7 +268,7 @@ all_pairwise_results <- bind_rows(
   })
 )
 
-all_pairwise_results_table <- all_pairwise_results %>%
+all_pairwise_results_display <- all_pairwise_results %>%
   mutate(
     estimate = round(estimate, 4),
     se = round(se, 4),
@@ -480,6 +277,7 @@ all_pairwise_results_table <- all_pairwise_results %>%
   ) %>%
   as_tibble()
 
-print(all_pairwise_results_table, n = Inf)
-# save final table
-write_csv(all_pairwise_results_table, output("covariates", "all_pairwise_results_betweenconn_covs_bl.csv"))
+print(all_pairwise_results_display, n = Inf)
+
+# Preserve full numerical precision in machine-readable results.
+write_csv(all_pairwise_results, output("covariates", "all_pairwise_results_betweenconn_covs_bl.csv"))

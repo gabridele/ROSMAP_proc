@@ -19,7 +19,8 @@
 .paths_file <- .paths_candidates[file.exists(.paths_candidates)][1]
 if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
-source(require_file("analysis/utils.R"))
+
+source(file.path(ANALYSIS_DIR, "effect_covs", "covs_utils.R"))
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
 
@@ -30,15 +31,13 @@ rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 demos_withinconn <- read.csv(require_file(demos("demos_conn.csv")))
 
 demos_withinconn <- demos_withinconn %>%
+  ec_prepare_model_variables(longitudinal = TRUE) %>%
   mutate(
     dcfdx = factor(
       dcfdx,
-      levels = c("NCI", "MCI", "AD", "other"),
-      labels = c("NCI", "MCI", "AD", "other")
-    ))
-
-# drop rows that have other as dfcdx
-demos_withinconn <- demos_withinconn %>%
+      levels = c("NCI", "MCI", "AD", "other")
+    )
+  ) %>%
   filter(dcfdx != "other") %>%
   droplevels()
 
@@ -51,41 +50,18 @@ model_formula <- within_conn ~ mean_FD + msex + site + age_scandate +
 # ============================================================
 
 make_long <- function(data) {
-  data %>%
-    pivot_longer(
-      cols = all_of(target_cols),
-      names_to = "network",
-      values_to = "within_conn"
-    ) %>%
-    mutate(
-      network = factor(network, levels = target_cols),
-      site = factor(
-        site,
-        levels = c("BNK", "UC", "MG", "RIRC")
-      )
-    ) %>%
-    filter(
-      !is.na(sub_id),
-      !is.na(mean_FD),
-      !is.na(within_conn),
-      !is.na(msex),
-      !is.na(site),
-      !is.na(age_scandate),
-      !is.na(eyes),
-      !is.na(dcfdx),
-      !is.na(syn_bin)
-    ) %>%
-    droplevels()
-}
-
-sig_from_p <- function(p) {
-  case_when(
-    p < 0.001 ~ "***",
-    p < 0.01  ~ "**",
-    p < 0.05  ~ "*",
-    TRUE ~ ""
+  ec_make_long(
+    data = data,
+    measure_cols = target_cols,
+    measure_name = "network",
+    value_name = "within_conn",
+    required_vars = c(
+      "sub_id", "mean_FD", "msex", "site", "age_scandate",
+      "eyes", "dcfdx", "syn_bin"
+    )
   )
 }
+
 
 
 # ============================================================
@@ -103,21 +79,13 @@ fixed_y_breaks <- seq(0, 0.6, by = 0.25)
 # ============================================================
 
 fit_network_models <- function(data_long) {
-
-  models <- map(target_cols, function(net) {
-
-    df_net <- data_long %>%
-      filter(network == net) %>%
-      droplevels()
-
-    lmer(
-      model_formula,
-      data = df_net,
-      control = lmerControl(optimizer = "bobyqa")
-    )
-  })
-
-  set_names(models, target_cols)
+  ec_fit_models_by_measure(
+    data_long = data_long,
+    measure_levels = target_cols,
+    measure_col = "network",
+    model_formula = model_formula,
+    mixed = TRUE
+  )
 }
 
 
@@ -126,19 +94,13 @@ fit_network_models <- function(data_long) {
 # ============================================================
 
 get_predicted_data <- function(data_long, models) {
-
-  map_dfr(target_cols, function(net) {
-
-    data_long %>%
-      filter(network == net) %>%
-      droplevels() %>%
-      mutate(
-        predicted_conn = fitted(models[[net]])
-      )
-  }) %>%
-    mutate(
-      network = factor(network, levels = target_cols)
-    )
+  ec_get_fitted_data(
+    data_long = data_long,
+    models = models,
+    measure_levels = target_cols,
+    measure_col = "network",
+    fixed_only = TRUE
+  )
 }
 
 
@@ -147,39 +109,12 @@ get_predicted_data <- function(data_long, models) {
 # ============================================================
 
 fit_model_pairwise <- function(models, covariate) {
-
-  imap_dfr(models, function(model, net) {
-
-    emm <- emmeans(
-      model,
-      specs = as.formula(paste("pairwise ~", covariate)),
-      adjust = "tukey",
-      lmer.df = "satterthwaite"
-    )
-
-    out <- as.data.frame(emm$contrasts)
-
-    stat_col <- intersect(
-      c("t.ratio", "z.ratio"),
-      names(out)
-    )[1]
-
-    out %>%
-      transmute(
-        network = net,
-        covariate = covariate,
-        contrast,
-        estimate,
-        se = SE,
-        df = if ("df" %in% names(out)) df else NA_real_,
-        statistic = .data[[stat_col]],
-        p_adj = p.value
-      )
-  }) %>%
-    mutate(
-      sig = sig_from_p(p_adj),
-      network = factor(network, levels = target_cols)
-    )
+  ec_pairwise_from_models(
+    models = models,
+    covariate = covariate,
+    measure_col = "network",
+    measure_levels = target_cols
+  )
 }
 
 
@@ -188,269 +123,60 @@ fit_model_pairwise <- function(models, covariate) {
 # ============================================================
 
 get_partial_residual_data <- function(models, covariate) {
-
-  imap_dfr(models, function(model, net) {
-
-    v <- visreg(
-      model,
-      covariate,
-      plot = FALSE,
-      predict = list(re.form = NA)
-    )
-
-    # visreg >= 3.0 uses visreg_res
-    residual_col <- intersect(
-      c("visreg_res", "visregRes"),
-      names(v$res)
-    )[1]
-
-    if (is.na(residual_col)) {
-      stop(
-        paste(
-          "Could not find partial residuals for",
-          covariate,
-          "in",
-          net
-        )
-      )
-    }
-
-    tibble(
-      network = net,
-      group = v$res[[covariate]],
-      value = v$res[[residual_col]]
-    )
-  }) %>%
-    mutate(
-      network = factor(network, levels = target_cols)
-    )
+  ec_partial_residuals_from_models(
+    models = models,
+    covariate = covariate,
+    measure_col = "network",
+    measure_levels = target_cols,
+    value_col = "value"
+  )
 }
 
-
-# ============================================================
-# Significance brackets
-# ============================================================
-
-make_pairwise_brackets <- function(
-  plot_data,
-  pairwise_results,
-  covariate
-) {
-
-  x_levels <- if (is.factor(plot_data$group)) {
-    levels(plot_data$group)
-  } else {
-    unique(as.character(plot_data$group))
-  }
-
-  y_positions <- plot_data %>%
-    group_by(network) %>%
-    summarise(
-      y_min = min(value, na.rm = TRUE),
-      y_max = max(value, na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    mutate(
-      y_range = y_max - y_min,
-      y_range = ifelse(y_range == 0, 1, y_range)
-    )
-
-  pairwise_results %>%
-    filter(p_adj < 0.05) %>%
-    separate(
-      contrast,
-      into = c("group1", "group2"),
-      sep = " - ",
-      remove = FALSE
-    ) %>%
-    mutate(
-      # Handles contrast labels with or without variable prefix
-      group1 = ifelse(
-        group1 %in% x_levels,
-        group1,
-        str_remove(group1, paste0("^", covariate))
-      ),
-      group2 = ifelse(
-        group2 %in% x_levels,
-        group2,
-        str_remove(group2, paste0("^", covariate))
-      )
-    ) %>%
-    left_join(
-      y_positions,
-      by = "network"
-    ) %>%
-    group_by(network) %>%
-    arrange(p_adj, .by_group = TRUE) %>%
-    mutate(
-      bracket_number = row_number(),
-      bracket_rank = ceiling(bracket_number / 2),
-
-      y.position = ifelse(
-        bracket_number %% 2 == 1,
-        y_max + bracket_rank * 0.08 * y_range,
-        y_min - bracket_rank * 0.08 * y_range
-      ),
-
-      label = sig
-    ) %>%
-    ungroup()
-}
 
 # ============================================================
 # Common plot function
 # ============================================================
 
 plot_factor_distribution <- function(
-  plot_data,
-  covariate,
-  pairwise_results,
-  title,
-  subtitle,
-  y_lab,
-  y_limits = NULL,
-  y_breaks = NULL
-) {
-
-  pairwise_annot <- make_pairwise_brackets(
-    plot_data = plot_data,
-    pairwise_results = pairwise_results,
-    covariate = covariate
-  )
-
-  p <- ggplot(
     plot_data,
-    aes(
-      x = group,
-      y = value,
-      color = network,
-      fill = network
-    )
-  ) +
-
-    geom_violin(
-      alpha = 0.18,
-      linewidth = 0.3,
-      trim = FALSE
-    ) +
-
-    geom_boxplot(
-      width = 0.30,
-      alpha = 0.75,
-      outlier.shape = NA,
-      linewidth = 0.35
-    ) +
-
-    geom_jitter(
-      width = 0.12,
-      alpha = 0.09,
-      size = 0.4
-    ) +
-
-    # Axis ticks + labels on EVERY network panel
-    facet_wrap(
-      ~ network,
-      ncol = 3,
-      scales = "fixed",
-      axes = "all",
-      axis.labels = "all"
-    ) +
-
-    scale_x_discrete(
-      drop = FALSE
-    ) +
-
-    scale_color_manual(
-      values = network_colors
-    ) +
-
-    scale_fill_manual(
-      values = network_colors
-    ) +
-
-    scale_y_continuous(
-      breaks = if (is.null(y_breaks)) waiver() else y_breaks,
-      expand = expansion(mult = c(0.18, 0.18))
-    ) +
-
-    coord_cartesian(
-      ylim = y_limits
-    ) +
-
-    theme_minimal(base_size = 13) +
-
-    theme(
-      legend.position = "none",
-
-      strip.text = element_text(
-        face = "bold"
-      ),
-
-      panel.grid.minor = element_blank(),
-
-      axis.text.x = element_text(
-        size = 20
-      ),
-
-      axis.text.y = element_text(
-        size = 20
-      )
-    ) +
-
-    labs(
-      title = title,
-      subtitle = subtitle,
-      x = covariate,
-      y = y_lab
-    )
-
-  if (nrow(pairwise_annot) > 0) {
-
-    p <- p +
-      ggpubr::stat_pvalue_manual(
-        pairwise_annot,
-        label = "label",
-        xmin = "group1",
-        xmax = "group2",
-        y.position = "y.position",
-        tip.length = 0,
-        size = 4,
-        bracket.size = 0.35,
-        hide.ns = TRUE
-      )
-  }
-
-  p
+    covariate,
+    pairwise_results,
+    title,
+    subtitle,
+    y_lab,
+    y_limits = NULL,
+    y_breaks = NULL
+) {
+  ec_plot_factor_distribution(
+    plot_data = plot_data,
+    covariate = covariate,
+    pairwise_results = pairwise_results,
+    title = title,
+    subtitle = subtitle,
+    y_label = y_lab,
+    measure_col = "network",
+    value_col = "value",
+    group_col = "group",
+    palette = network_colors,
+    y_limits = y_limits,
+    y_breaks = y_breaks,
+    facet_ncol = 3,
+    facet_axes_all = TRUE,
+    x_text_angle = 0,
+    x_text_size = 20,
+    y_text_size = 20
+  )
 }
 
 # ============================================================
 # Save PDF + editable SVG
 # ============================================================
 
-save_plot <- function(
-  plot,
-  filename,
-  width = 13,
-  height = 7
-) {
-
-  ggsave(
-    file.path(
-      out_dir,
-      paste0(filename, ".pdf")
-    ),
+save_plot <- function(plot, filename, width = 13, height = 7) {
+  ec_save_pdf_svg(
     plot = plot,
-    width = width,
-    height = height
-  )
-
-  ggsave(
-    file.path(
-      out_dir,
-      paste0(filename, ".svg")
-    ),
-    plot = plot,
-    device = svglite::svglite,
+    out_dir = out_dir,
+    filename = filename,
     width = width,
     height = height
   )
@@ -465,8 +191,7 @@ run_factor_analysis <- function(
   models,
   covariate,
   analysis_label,
-  file_suffix,
-  print_default_partial = FALSE
+  file_suffix
 ) {
 
   # ----------------------------------------------------------
@@ -511,7 +236,7 @@ run_factor_analysis <- function(
     ),
 
     subtitle =
-      "Violin/box/jitter show model-predicted values; stars show Tukey-adjusted emmeans comparisons",
+      "Violin/box/jitter show fixed-effect predictions; stars indicate BH-FDR-corrected emmeans contrasts across connectivity outcomes",
 
     y_lab =
       "Predicted within-network connectivity",
@@ -547,7 +272,7 @@ run_factor_analysis <- function(
     ),
 
     subtitle =
-      "Violin/box/jitter show partial residuals; stars show Tukey-adjusted emmeans comparisons",
+      "Violin/box/jitter show partial residuals; stars indicate BH-FDR-corrected emmeans contrasts across connectivity outcomes",
 
     y_lab =
       "Within-network connectivity (partial residual)",
@@ -556,41 +281,6 @@ run_factor_analysis <- function(
     y_limits = NULL,
     y_breaks = NULL
   )
-
-  # ----------------------------------------------------------
-  # Print
-  # ----------------------------------------------------------
-
-  if (print_default_partial) {
-
-    default_partial_data <- partial_plot_data %>%
-      filter(network == "Default") %>%
-      droplevels()
-
-    default_pairwise <- pairwise_results %>%
-      filter(network == "Default")
-
-    p_default_partial <- plot_factor_distribution(
-      plot_data = default_partial_data,
-      covariate = covariate,
-      pairwise_results = default_pairwise,
-
-      title = paste0(
-        "Partial residual distribution by ",
-        covariate
-      ),
-
-      subtitle =
-        "Violin/box/jitter show partial residuals; stars show Tukey-adjusted emmeans comparisons",
-
-      y_lab = "Within-network connectivity (partial residual)",
-
-      y_limits = NULL,
-      y_breaks = NULL
-    )
-
-    print(p_default_partial)
-  }
 
 
   # ----------------------------------------------------------
@@ -653,8 +343,7 @@ pre_results <- map(
     models = models_pre,
     covariate = .x,
     analysis_label = "Pre-filtering",
-    file_suffix = "preFDfilter",
-    print_default_partial = TRUE
+    file_suffix = "preFDfilter"
   )
 ) %>%
   set_names(covariates_to_run)
@@ -664,8 +353,7 @@ pre_results <- map(
 # ============================================================
 
 data_long_post <- data_long_pre %>%
-  filter(mean_FD < fd_threshold) %>%
-  droplevels()
+  ec_apply_fd_filter(threshold = fd_threshold)
 
 models_post <- fit_network_models(
   data_long_post
