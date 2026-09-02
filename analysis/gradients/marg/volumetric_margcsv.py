@@ -36,7 +36,6 @@ maskers = {
 # ------------------------------------------------------------
 
 gradient_dir = Path(
-    "/Users/ga0034de/github_dir/ROSMAP_proc/"
     "analysis/gradients/marg"
 )
 
@@ -123,6 +122,6 @@ for atlas_name, dataframe in atlas_results.items():
     print(dataframe.shape)
     print(dataframe.head())
     dataframe.to_csv(
-        f"/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/marg/volumetric_marg_{atlas_name}.csv",
+        f"analysis/gradients/marg/volumetric_marg_{atlas_name}.csv",
         index=False,
     )

@@ -136,6 +136,6 @@ MARGULIES_GRADIENTS_400 <- Sys.getenv(
     ANALYSIS_DIR,
     "gradients",
     "marg",
-    "volumetric_marg_customgroup_400.csv"
+    "volumetric_marg_xcpd_400.csv"
   )
 )
