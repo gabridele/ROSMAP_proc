@@ -100,3 +100,23 @@ require_file <- function(path, label = "input file") {
   }
   path
 }
+
+## path to csv containing the site-wise fc matrices for plotting
+FC_MATRIX_MANIFEST <- Sys.getenv(
+  "ROSMAP_FC_MATRIX_MANIFEST",
+  unset = file.path(
+    ANALYSIS_DIR,
+    "fc_related",
+    "fc_matrix_manifest.csv"
+  )
+)
+
+SCHAEFER4S456_ATLAS_TSV <- Sys.getenv(
+  "SCHAEFER4S456_ATLAS_TSV",
+  unset = file.path(
+    ANALYSIS_DIR,
+    "fc_related",
+    "atlas-4S456Parcels",
+    "atlas-4S456Parcels_dseg.tsv"
+  )
+)

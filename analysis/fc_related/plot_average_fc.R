@@ -1,8 +1,12 @@
 # Visualize average parcelwise functional-connectivity matrices.
-# Matrix locations are supplied through a manifest; the 4S456 label table is
-# supplied separately from AtlasPack so no workstation paths are embedded.
+#
+# Matrix locations are supplied through a two-column manifest. Atlas labels are
+# read from the unmodified AtlasPack 4S456 TSV so workstation-specific paths and
+# redistributed atlas derivatives are not required.
 
-# Shared input/output path configuration. See analysis/README.md.
+# -----------------------------------------------------------------------------
+# Shared paths
+# -----------------------------------------------------------------------------
 .script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 .script_dir <- if (length(.script_arg)) {
   dirname(normalizePath(sub("^--file=", "", .script_arg[[1]]), mustWork = FALSE))
@@ -21,56 +25,82 @@ if (is.na(.paths_file)) stop("Could not locate analysis/paths.R")
 source(.paths_file)
 rm(.script_arg, .script_dir, .paths_candidates, .paths_file)
 
-library(reticulate)
-library(ggplot2)
-library(dplyr)
-library(readr)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(readr)
+  library(reticulate)
+})
 
-# Load NumPy
 np <- import("numpy", convert = TRUE)
 
-# ------------------------------------------------------------
-# 1. Inputs
-# ------------------------------------------------------------
-# Matrix paths are supplied through a small two-column CSV manifest so this
-# plotting script does not encode workstation-specific paths. The manifest
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+# Set TRUE only *if the atlas TSV is not already ordered by network* and grouped
+# network blocks are desired in the figure.
+REORDER_BY_NETWORK <- FALSE
+
+# All matrices share the same fixed connectivity scale for direct comparison.
+COLOUR_LIMIT <- 1
+
+# Exclude diagonal/self-connections from the descriptive matrix statistics.
+EXCLUDE_DIAGONAL_FROM_STATS <- TRUE
+
+# -----------------------------------------------------------------------------
+# Inputs
+# -----------------------------------------------------------------------------
+# Matrix paths are supplied through a small two-column CSV file. The file
 # must contain columns named `name` and `path`; see fc_matrix_manifest.example.csv.
-manifest_file <- Sys.getenv("ROSMAP_FC_MANIFEST", unset = "")
-if (!nzchar(manifest_file)) {
-  stop(
-    "Set ROSMAP_FC_MANIFEST to a CSV with columns 'name' and 'path'. " ,
-    "See analysis/fc_related/fc_matrix_manifest.example.csv."
-  )
-}
-manifest_file <- require_file(manifest_file, "FC matrix manifest")
-manifest <- read_csv(manifest_file, show_col_types = FALSE)
+# Path to the manifest should be set with ROSMAP_FC_MATRIX_MANIFEST in paths.R
+
+manifest_file <- require_file(
+  FC_MATRIX_MANIFEST
+)
+
+manifest <- readr::read_csv(
+  manifest_file,
+  show_col_types = FALSE
+)
 
 required_manifest_columns <- c("name", "path")
 if (!all(required_manifest_columns %in% names(manifest))) {
   stop("FC matrix manifest must contain columns: name, path")
 }
 
-files <- as.character(manifest$path)
-matrix_names <- as.character(manifest$name)
-if (length(files) == 0 || any(!nzchar(files))) {
-  stop("FC matrix manifest contains no usable paths.")
-}
-
-# Resolve relative matrix paths relative to the manifest itself, not the
-# caller's working directory. Absolute paths are left unchanged.
-manifest_dir <- dirname(normalizePath(manifest_file, mustWork = TRUE))
-is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", files)
-files[!is_absolute] <- file.path(manifest_dir, files[!is_absolute])
-
-
-dseg_file <- Sys.getenv("ROSMAP_ATLAS_TSV", unset = "")
-if (!nzchar(dseg_file)) {
-  stop(
-    "Set ROSMAP_ATLAS_TSV to the unmodified ",
-    "AtlasPack atlas-4S456Parcels_dseg.tsv file."
+manifest <- manifest %>%
+  transmute(
+    name = trimws(as.character(name)),
+    path = trimws(as.character(path))
   )
+
+if (nrow(manifest) == 0 || any(!nzchar(manifest$name)) || any(!nzchar(manifest$path))) {
+  stop("FC matrix manifest contains empty names or paths.")
 }
-dseg_file <- require_file(dseg_file, "4S456 atlas TSV")
+if (anyDuplicated(manifest$name)) {
+  stop("FC matrix manifest contains duplicate matrix names.")
+}
+
+# Resolve relative paths relative to the manifest itself.
+manifest_dir <- dirname(normalizePath(manifest_file, mustWork = TRUE))
+is_absolute <- grepl("^(/|[A-Za-z]:[/\\\\])", manifest$path)
+manifest$resolved_path <- manifest$path
+manifest$resolved_path[!is_absolute] <- file.path(
+  manifest_dir,
+  manifest$path[!is_absolute]
+)
+
+matrix_names <- manifest$name
+matrix_files <- vapply(
+  manifest$resolved_path,
+  require_file,
+  character(1),
+  label = "FC matrix"
+)
+
+# Path to the atlas TSV file. Included in the repository, but can be overidden in paths.R
+
+dseg_file <- require_file(SCHAEFER4S456_ATLAS_TSV, "4S456 atlas TSV")
 
 dseg <- read_tsv(
   dseg_file,
@@ -78,66 +108,43 @@ dseg <- read_tsv(
   show_col_types = FALSE
 )
 
-required_columns <- c("network_label", "atlas_name")
-
-if (!all(required_columns %in% names(dseg))) {
+required_dseg_columns <- c("network_label", "atlas_name")
+if (!all(required_dseg_columns %in% names(dseg))) {
   stop(
-    "The dseg TSV must contain these columns: ",
-    paste(required_columns, collapse = ", ")
+    "The atlas TSV must contain columns: ",
+    paste(required_dseg_columns, collapse = ", ")
   )
 }
 
 network <- dseg %>%
   transmute(
-    network_label = na_if(
-      trimws(as.character(network_label)),
-      ""
-    ),
-    atlas_name = na_if(
-      trimws(as.character(atlas_name)),
-      ""
-    ),
-
-    # Use atlas_name when network_label is missing
-    plot_label = coalesce(
-      network_label,
-      atlas_name,
-      "Unlabelled"
-    )
+    network_label = na_if(trimws(as.character(network_label)), ""),
+    atlas_name = na_if(trimws(as.character(atlas_name)), ""),
+    plot_label = coalesce(network_label, atlas_name, "Unlabelled")
   ) %>%
   pull(plot_label)
 
-# ------------------------------------------------------------
-# 3. Load and validate matrices
-# ------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Load and validate matrices
+# -----------------------------------------------------------------------------
+matrices <- lapply(matrix_files, function(file) {
+  x <- as.matrix(np$load(file, allow_pickle = FALSE))
 
-matrices <- lapply(files, function(file) {
-
-  if (!file.exists(file)) {
-    stop("File not found: ", file)
+  if (length(dim(x)) != 2 || nrow(x) != ncol(x)) {
+    stop(file, " does not contain a square two-dimensional matrix.")
   }
-
-  x <- np$load(
-    file,
-    allow_pickle = FALSE
-  )
-
-  x <- as.matrix(x)
-
-  if (nrow(x) != ncol(x)) {
-    stop(file, " does not contain a square matrix.")
+  if (any(!is.finite(x))) {
+    warning(file, " contains non-finite values; they will be plotted as missing.")
   }
 
   x
 })
 
-# Confirm all matrices have identical dimensions
 matrix_dimensions <- vapply(
   matrices,
   function(x) paste(dim(x), collapse = "x"),
   character(1)
 )
-
 if (length(unique(matrix_dimensions)) != 1) {
   stop(
     "Matrices do not have matching dimensions: ",
@@ -146,22 +153,16 @@ if (length(unique(matrix_dimensions)) != 1) {
 }
 
 number_of_rois <- nrow(matrices[[1]])
-
 if (length(network) != number_of_rois) {
   stop(
-    "The number of dseg rows does not match the matrix dimensions. ",
-    "Matrix has ",
-    number_of_rois,
-    " ROIs, but dseg contains ",
-    length(network),
-    " rows."
+    "Atlas/matrix size mismatch: matrix has ", number_of_rois,
+    " ROIs, but the atlas TSV contains ", length(network), " rows."
   )
 }
 
-# ------------------------------------------------------------
-# 4. Optionally group ROIs by network
-# ------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Common ROI ordering and network blocks
+# -----------------------------------------------------------------------------
 # TRUE:
 #   ROIs are reordered so that members of each network are adjacent.
 #
@@ -170,423 +171,147 @@ if (length(network) != number_of_rois) {
 #
 # The same ordering is applied to rows and columns of every matrix.
 
-reorder_by_network <- FALSE
-
-if (reorder_by_network) {
-
-  # Preserve network order based on first appearance in dseg
-  network_factor <- factor(
-    network,
-    levels = unique(network)
-  )
-
+if (REORDER_BY_NETWORK) {
+  network_factor <- factor(network, levels = unique(network))
   roi_order <- order(network_factor)
-
 } else {
-
   roi_order <- seq_len(number_of_rois)
 }
 
 network_plot_order <- network[roi_order]
-
-# Apply identical ordering to every connectivity matrix
 matrices <- lapply(
   matrices,
   function(x) x[roi_order, roi_order, drop = FALSE]
 )
 
-# ------------------------------------------------------------
-# 5. Find network block locations
-# ------------------------------------------------------------
-
-# rle() identifies consecutive blocks of identical labels
 network_runs <- rle(network_plot_order)
-
-network_blocks <- data.frame(
+network_blocks <- tibble(
   network = network_runs$values,
-  block_length = network_runs$lengths,
-  stringsAsFactors = FALSE
-)
+  block_length = network_runs$lengths
+) %>%
+  mutate(
+    end = cumsum(block_length),
+    start = lag(end, default = 0) + 1,
+    midpoint = (start + end) / 2
+  )
 
-network_blocks$end <- cumsum(
-  network_blocks$block_length
-)
+network_boundaries <- head(network_blocks$end, -1) + 0.5
 
-network_blocks$start <- c(
-  1,
-  head(network_blocks$end, -1) + 1
-)
-
-# Position at which the network name is displayed
-network_blocks$midpoint <- (
-  network_blocks$start +
-    network_blocks$end
-) / 2
-
-# Lines are placed between adjacent network blocks
-network_boundaries <- head(
-  network_blocks$end,
-  -1
-) + 0.5
-
-# ------------------------------------------------------------
-# 6. Convert matrices to long format
-# ------------------------------------------------------------
-
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
 matrix_to_dataframe <- function(x, matrix_name) {
-
-  data.frame(
-    row = rep(
-      seq_len(nrow(x)),
-      times = ncol(x)
-    ),
-    column = rep(
-      seq_len(ncol(x)),
-      each = nrow(x)
-    ),
+  tibble(
+    row = rep(seq_len(nrow(x)), times = ncol(x)),
+    column = rep(seq_len(ncol(x)), each = nrow(x)),
     connectivity = as.vector(x),
     matrix = matrix_name
   )
 }
 
-plot_data <- do.call(
-  rbind,
-  Map(
-    matrix_to_dataframe,
-    matrices,
-    matrix_names
+safe_filename <- function(x) {
+  gsub("[^A-Za-z0-9_-]+", "_", x)
+}
+
+matrix_summary <- function(x, matrix_name, exclude_diagonal = TRUE) {
+  values <- x
+  if (exclude_diagonal) diag(values) <- NA_real_
+  values <- as.numeric(values)
+  values <- values[is.finite(values)]
+
+  if (length(values) == 0) {
+    return(tibble(
+      matrix = matrix_name,
+      n_values = 0L,
+      mean = NA_real_,
+      sd = NA_real_,
+      median = NA_real_,
+      min = NA_real_,
+      max = NA_real_
+    ))
+  }
+
+  tibble(
+    matrix = matrix_name,
+    n_values = length(values),
+    mean = mean(values),
+    sd = sd(values),
+    median = median(values),
+    min = min(values),
+    max = max(values)
   )
-)
+}
 
-plot_data$matrix <- factor(
-  plot_data$matrix,
-  levels = matrix_names
-)
-
-# Symmetric colour limits for every matrix
-colour_limit <- 1
-
-# ------------------------------------------------------------
-# 7. Function for creating a labelled FC plot
-# ------------------------------------------------------------
-
-make_fc_plot <- function(
-    data,
-    title,
-    subtitle = NULL,
-    facet = FALSE,
-    axis_text_size = 7
-) {
-
+make_fc_plot <- function(data, title, facet = FALSE, axis_text_size = 7) {
   p <- ggplot(
     data,
-    aes(
-      x = column,
-      y = row,
-      fill = connectivity
-    )
+    aes(x = column, y = row, fill = connectivity)
   ) +
     geom_tile() +
-
-    # Vertical boundaries between networks
     geom_vline(
       xintercept = network_boundaries,
       linewidth = 0.25,
       colour = "black",
       alpha = 0.7
     ) +
-
-    # Horizontal boundaries between networks
     geom_hline(
       yintercept = network_boundaries,
       linewidth = 0.25,
       colour = "black",
       alpha = 0.7
     ) +
-
-    # Network labels along the top
     scale_x_continuous(
       position = "top",
       breaks = network_blocks$midpoint,
       labels = network_blocks$network,
       expand = c(0, 0)
     ) +
-
-    # Network labels along the left
     scale_y_reverse(
       breaks = network_blocks$midpoint,
       labels = network_blocks$network,
       expand = c(0, 0)
     ) +
-
     scale_fill_gradient2(
       low = "#2166AC",
       mid = "white",
       high = "#B2182B",
       midpoint = 0,
-      limits = c(
-        -colour_limit,
-        colour_limit
-      ),
+      limits = c(-COLOUR_LIMIT, COLOUR_LIMIT),
       oob = scales::squish,
       na.value = "grey90",
       name = "Connectivity"
     ) +
-
-    coord_fixed(
-      clip = "off"
-    ) +
-
-    labs(
-      title = title,
-      #subtitle = subtitle,
-      x = NULL,
-      y = NULL
-    ) +
-
-    theme_minimal(
-      base_size = 12
-    ) +
-
+    coord_fixed(clip = "off") +
+    labs(title = title, x = NULL, y = NULL) +
+    theme_minimal(base_size = 12) +
     theme(
       panel.grid = element_blank(),
-
-      strip.text = element_text(
-        face = "bold"
-      ),
-
+      strip.text = element_text(face = "bold"),
       axis.ticks = element_blank(),
-
-      # Top network labels
       axis.text.x.top = element_text(
         size = axis_text_size,
         angle = 45,
         hjust = 0,
         vjust = 0
       ),
-
-      # Left network labels
-      axis.text.y.left = element_text(
-        size = axis_text_size,
-        hjust = 1
-      ),
-
-      plot.title = element_text(
-        face = "bold",
-        size = 14
-      ),
-
-      plot.subtitle = element_text(
-        size = 10,
-        margin = margin(b = 8)
-      ),
-
-      plot.margin = margin(
-        t = 15,
-        r = 15,
-        b = 10,
-        l = 15
-      )
+      axis.text.y.left = element_text(size = axis_text_size, hjust = 1),
+      plot.title = element_text(face = "bold", size = 18),
+      plot.margin = margin(t = 15, r = 15, b = 10, l = 15)
     )
 
   if (facet) {
-    p <- p +
-      facet_wrap(
-        ~matrix,
-        ncol = 2
-      )
+    p <- p + facet_wrap(~matrix, ncol = 2)
   }
 
   p
 }
 
-# ------------------------------------------------------------
-# 8. Faceted plot containing all matrices
-# ------------------------------------------------------------
-
-fc_plot <- make_fc_plot(
-  data = plot_data,
-  title = "Average Functional Connectivity Matrices",
-  facet = TRUE,
-  axis_text_size = 6
-)
-
-print(fc_plot)
-
-ggsave(
-  filename = output("fc_matrices", "all_average_fc_matrices.svg"),
-  plot = fc_plot,
-  width = 14,
-  height = 18,
-  dpi = 300,
-  bg = "white"
-)
-
-# ------------------------------------------------------------
-# 9. Save each matrix separately
-# ------------------------------------------------------------
-
-for (i in seq_along(matrices)) {
-
-  plot_data_i <- matrix_to_dataframe(
-    matrices[[i]],
-    matrix_names[i]
-  )
-
-  single_plot <- make_fc_plot(
-    data = plot_data_i,
-    title = paste(
-      "Average Functional Connectivity Matrix -",
-      matrix_names[i]
-    ),
-    facet = FALSE,
-    axis_text_size = 7
-  )
-
-  print(single_plot)
-
-  safe_name <- gsub(
-    pattern = "[^A-Za-z0-9_-]+",
-    replacement = "_",
-    x = matrix_names[i]
-  )
-
-  ggsave(
-    filename = output(
-      "fc_matrices",
-      paste0("average_fc_matrix_", safe_name, ".svg")
-    ),
-    plot = single_plot,
-    width = 9,
-    height = 8,
-    dpi = 300,
-    bg = "white"
-  )
-}
-
-# ------------------------------------------------------------
-# 10. Individual matrices with summary statistics
-# ------------------------------------------------------------
-
-# Set TRUE to exclude diagonal values from statistics
-exclude_diagonal <- TRUE
-
-for (i in seq_along(matrices)) {
-
-  current_matrix <- matrices[[i]]
-
-  # Values used for summary statistics
-  stats_values <- current_matrix
-
-  if (exclude_diagonal) {
-    diag(stats_values) <- NA_real_
-  }
-
-  stats_values <- as.numeric(stats_values)
-
-  stats_values <- stats_values[
-    is.finite(stats_values)
-  ]
-
-  if (length(stats_values) == 0) {
-    warning(
-      "No finite values available for ",
-      matrix_names[i]
-    )
-
-    matrix_stats <- c(
-      Mean = NA_real_,
-      SD = NA_real_,
-      Min = NA_real_,
-      Max = NA_real_,
-      Median = NA_real_
-    )
-
-  } else {
-
-    matrix_stats <- c(
-      Mean = mean(stats_values),
-      SD = sd(stats_values),
-      Min = min(stats_values),
-      Max = max(stats_values),
-      Median = median(stats_values)
-    )
-  }
-
-  # stats_text <- sprintf(
-  #   paste0(
-  #     "Mean: %.3f   SD: %.3f   Min: %.3f   ",
-  #     "Max: %.3f   Median: %.3f"
-  #   ),
-  #   matrix_stats["Mean"],
-  #   matrix_stats["SD"],
-  #   matrix_stats["Min"],
-  #   matrix_stats["Max"],
-  #   matrix_stats["Median"]
-  # )
-
-  plot_data_i <- matrix_to_dataframe(
-    current_matrix,
-    matrix_names[i]
-  )
-
-  single_plot <- make_fc_plot(
-    data = plot_data_i,
-    title = paste(
-      "Average Functional Connectivity Matrix -",
-      matrix_names[i]
-    ),
-    #subtitle = stats_text,
-    facet = FALSE,
-    axis_text_size = 7
-  )
-
-  print(single_plot)
-
-  safe_name <- gsub(
-    pattern = "[^A-Za-z0-9_-]+",
-    replacement = "_",
-    x = matrix_names[i]
-  )
-
-  # ggsave(
-  #   filename = paste0(
-  #     "average_fc_matrix_",
-  #     safe_name,
-  #     "_with_statistics.svg"
-  #   ),
-  #   plot = single_plot,
-  #   width = 9,
-  #   height = 8,
-  #   dpi = 300,
-  #   bg = "white"
-  # )
-}
-
-# ------------------------------------------------------------
-# Save each matrix as a clean png
-# ------------------------------------------------------------
-
-for (i in seq_along(matrices)) {
-
-  plot_data_i <- matrix_to_dataframe(
-    matrices[[i]],
-    matrix_names[i]
-  )
-
-  matrix_plot <- ggplot(
-    plot_data_i,
-    aes(
-      x = column,
-      y = row,
-      fill = connectivity
-    )
+make_clean_fc_plot <- function(data) {
+  ggplot(
+    data,
+    aes(x = column, y = row, fill = connectivity)
   ) +
-    geom_raster(
-      interpolate = FALSE
-    ) +
-
-    # Lines separating network blocks
+    geom_raster(interpolate = FALSE) +
     geom_vline(
       xintercept = network_boundaries,
       colour = "black",
@@ -597,41 +322,71 @@ for (i in seq_along(matrices)) {
       colour = "black",
       linewidth = 0.25
     ) +
-
-    scale_x_continuous(
-      expand = c(0, 0)
-    ) +
-    scale_y_reverse(
-      expand = c(0, 0)
-    ) +
-
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_reverse(expand = c(0, 0)) +
     scale_fill_gradient2(
       low = "#2166AC",
       mid = "white",
       high = "#B2182B",
       midpoint = 0,
-      limits = c(-colour_limit, colour_limit),
+      limits = c(-COLOUR_LIMIT, COLOUR_LIMIT),
       oob = scales::squish,
       na.value = "grey90"
     ) +
-
-    coord_fixed(
-      expand = FALSE,
-      clip = "off"
-    ) +
-
-    # Remove legend, labels, axes, title, and margins
+    coord_fixed(expand = FALSE, clip = "off") +
     guides(fill = "none") +
     theme_void() +
     theme(
       legend.position = "none",
       plot.margin = margin(0, 0, 0, 0, unit = "pt")
     )
+}
 
-  safe_name <- gsub(
-    pattern = "[^A-Za-z0-9_-]+",
-    replacement = "_",
-    x = matrix_names[i]
+# -----------------------------------------------------------------------------
+# Individual figures and descriptive stats
+# -----------------------------------------------------------------------------
+summary_table <- bind_rows(Map(
+  function(x, name) {
+    matrix_summary(
+      x,
+      matrix_name = name,
+      exclude_diagonal = EXCLUDE_DIAGONAL_FROM_STATS
+    )
+  },
+  matrices,
+  matrix_names
+))
+
+write_csv(
+  summary_table,
+  output("fc_matrices", "average_fc_matrix_summary.csv")
+)
+print(summary_table)
+
+for (i in seq_along(matrices)) {
+  plot_data_i <- matrix_to_dataframe(matrices[[i]], matrix_names[i])
+  safe_name <- safe_filename(matrix_names[i])
+
+  labelled_plot <- make_fc_plot(
+    data = plot_data_i,
+    title = paste("Average Functional Connectivity Matrix -", matrix_names[i]),
+    facet = FALSE,
+    axis_text_size = 12
+  )
+
+  clean_plot <- make_clean_fc_plot(plot_data_i)
+
+  print(labelled_plot)
+
+  ggsave(
+    filename = output(
+      "fc_matrices",
+      paste0("average_fc_matrix_", safe_name, ".svg")
+    ),
+    plot = labelled_plot,
+    width = 9,
+    height = 8,
+    bg = "white"
   )
 
   ggsave(
@@ -639,7 +394,7 @@ for (i in seq_along(matrices)) {
       "fc_matrices",
       paste0("average_fc_matrix_", safe_name, ".png")
     ),
-    plot = matrix_plot,
+    plot = clean_plot,
     width = 10,
     height = 10,
     units = "in",
