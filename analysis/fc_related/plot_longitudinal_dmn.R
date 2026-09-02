@@ -175,7 +175,7 @@ build_subject_predictions <- function(model) {
         length.out = PREDICTION_POINTS
       )),
       mean_FD = mean(mean_FD, na.rm = TRUE),
-      age_bl = mean(age_bl, na.rm = TRUE),
+      age_bl = first(age_bl),
       msex = first(as.character(msex)),
       site = first(as.character(site)),
       eyes = first(as.character(eyes)),
