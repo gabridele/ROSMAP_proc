@@ -11,50 +11,23 @@ from nilearn.maskers import NiftiLabelsMasker
 # Atlas files
 # ------------------------------------------------------------
 
-customgroup_atlas_file = (
-    "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/"
-    "lea_atlas-Schaefer400TianS2Cereb-space-MNI152NLin6Asym/"
-    "atlas-Schaefer400_space-"
-    "MNI152NLin6Asym_res-2_dseg.nii.gz"
-)
-
 xcpd_400_atlas_file = (
-    "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/"
+    "analysis/gradients/"
     "atlas_data/atlas-4S456Parcels/atlas-400Parcels_space-MNI152NLin6Asym_res-2_dseg.nii.gz"
 )
-
-xcpd_600_atlas_file = (
-    "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/"
-    "atlas_data/atlas-4S656Parcels/atlas-600Parcels_space-MNI152NLin6Asym_res-2_dseg.nii.gz"
-)
-#/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/atlas-4S656Parcels/atlas-4S656Parcels_space-MNI152NLin6Asym_res-2_dseg.nii.gz
 
 # ------------------------------------------------------------
 # Create maskers
 # ------------------------------------------------------------
 
 maskers = {
-    "customgroup_400": NiftiLabelsMasker(
-        labels_img=customgroup_atlas_file,
-        smoothing_fwhm=None,
-        standardize=False,
-        strategy="mean",
-        verbose=0,
-    ),
-    "xcpd_456": NiftiLabelsMasker(
+    "xcpd_400": NiftiLabelsMasker(
         labels_img=xcpd_400_atlas_file,
         smoothing_fwhm=None,
         standardize=False,
         strategy="mean",
         verbose=0,
-    ),
-    "xcpd_656": NiftiLabelsMasker(
-        labels_img=xcpd_600_atlas_file,
-        smoothing_fwhm=None,
-        standardize=False,
-        strategy="mean",
-        verbose=0,
-    ),
+    )
 }
 
 

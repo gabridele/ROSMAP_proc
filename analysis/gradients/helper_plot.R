@@ -1,4 +1,4 @@
-
+# script to make the yeo mask and ggseg2 atlas for schaefer 400 parcels
 
 library(dplyr)
 library(ggplot2)
@@ -6,9 +6,9 @@ library(stringr)
 library(purrr)
 library(sf)
 
-mask400 <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/Schaefer2018_400Parcels_7Networks_order.txt", header = FALSE, sep = "\t") %>% select(c(2))
+mask400 <- read.csv("analysis/gradients/atlas_data/Schaefer2018_400Parcels_7Networks_order.txt", header = FALSE, sep = "\t") %>% select(c(2))
 
-write.csv(mask400, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/Schaefer2018_400Parcels_order.txt", row.names = FALSE, quote = FALSE)
+write.csv(mask400, "analysis/gradients/atlas_data/Schaefer2018_400Parcels_order.txt", row.names = FALSE, quote = FALSE)
 
 mask400 <- mask400 %>%
   mutate(network = case_when(
@@ -23,33 +23,11 @@ mask400 <- mask400 %>%
 
 mask400 <- mask400 %>% select(network)
 
-
-
 # save
-write.csv(mask400, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/org_mask_yeo_400.txt", row.names = FALSE, quote = FALSE)
-
-mask600 <- read.csv("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/Schaefer2018_600Parcels_7Networks_order.txt", header = FALSE, sep = "\t") %>% select(c(2))
-
-write.csv(mask600, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/Schaefer2018_600Parcels_order.txt", row.names = FALSE, quote = FALSE)
-
-mask600 <- mask600 %>%
-  mutate(network = case_when(
-    str_detect(V2, "Vis") ~ 1,
-    str_detect(V2, "SomMot") ~ 2,
-    str_detect(V2, "DorsAttn") ~ 3,
-    str_detect(V2, "SalVentAttn") ~ 4,
-    str_detect(V2, "Limbic") ~ 5,
-    str_detect(V2, "Cont") ~ 6,
-    str_detect(V2, "Default") ~ 7
-  ))
-
-mask600 <- mask600 %>% select(network)
-
-# save
-write.csv(mask600, "/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/org_mask_yeo_600.txt", row.names = FALSE, quote = FALSE)
+write.csv(mask400, "analysis/gradients/atlas_data/org_mask_yeo_400.txt", row.names = FALSE, quote = FALSE)
 
 # get ggseg2 atlas
-PARCELS <- 600
+PARCELS <- 400
 atlas_fun <- get(
   paste0("schaefer7_", PARCELS),
   envir = asNamespace("ggsegSchaefer")
@@ -142,5 +120,5 @@ n_parcels <- atlas_df %>%
   nrow()
 print(paste0("Number of parcels in atlas: ", n_parcels))
 #save to rds
-saveRDS(atlas_geometry, paste0("/Users/ga0034de/github_dir/ROSMAP_proc/analysis/gradients/atlas_data/schaef", PARCELS, "_ggseg2.rds"))
+saveRDS(atlas_geometry, paste0("analysis/gradients/atlas_data/schaef", PARCELS, "_ggseg2.rds"))
 

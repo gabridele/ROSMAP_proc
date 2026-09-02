@@ -11,7 +11,7 @@ from netneurotools.interface import vertices_to_parcels
 # Settings
 # --------------------------------------------------
 
-N_PARCELS = 600
+N_PARCELS = 400
 N_NETWORKS = 7
 N_GRADIENTS = 5
 

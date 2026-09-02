@@ -12,12 +12,4 @@
 *.tmp
 *.gif
 old*
-.DS_Store
-analysis/april26/.DS_Store
-analysis/april26/.DS_Store
-.DS_Store
-analysis/april26/util_gradients.R
-.DS_Store
-analysis/april26/.DS_Store
-analysis/april26/paired_ttest.py
-analysis/april26/gen_consensus_mtrx.py
+misc

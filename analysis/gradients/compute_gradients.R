@@ -68,18 +68,6 @@ conflicts_prefer(dplyr::lag)
 np <- import("numpy", convert = TRUE)
 
 # ============================================================
-#
-# ============================================================
-
-source(
-  file.path(
-    ANALYSIS_DIR,
-    "gradients",
-    "util_gradients.R"
-  )
-)
-
-# ============================================================
 # Atlas setup
 # ============================================================
 
@@ -166,11 +154,18 @@ gradient_cols <- data.frame(gradient1 = c("#3F596D", "#D38A4E"),
                             gradient2 = c("#4682B4", "#781286"),  
                             gradient3 = c("#8A6081", "#738518"))
 
+
 # ============================================================
-# Python / NumPy
+#
 # ============================================================
 
-
+source(
+  file.path(
+    ANALYSIS_DIR,
+    "gradients",
+    "util_gradients.R"
+  )
+)
 
 
 # ============================================================
@@ -263,6 +258,16 @@ rirc400xcpd <- rirc400xcpd[1:400,1:400]
 # ============================================================
 # Gradient extraction
 # ============================================================
+
+dir.create(
+  file.path(
+    ANALYSIS_DIR,
+    "gradients",
+    "plots"
+  ),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
 
 grad_list_individ <- get_gradients(
   connectome_ests = list(
