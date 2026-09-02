@@ -1,0 +1,13 @@
+# Core FC computation
+numpy
+pandas
+
+# Hyperslab / notebook QC
+nibabel
+plotly
+matplotlib
+nilearn
+templateflow
+
+# Optional single-registration report section of qc_bbr_vs_nobbr_alignment.ipynb
+nireports

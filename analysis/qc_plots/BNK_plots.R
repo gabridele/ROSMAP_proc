@@ -13,14 +13,14 @@ library(tibble)
 library(readr)
 library(gghalves)
 
-bnk_visual <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/bnk_visual_dice_cp.csv")
+bnk_visual <- read_csv("analysis/qc_plots/BNK_BBRnoBBR_plot/bnk_visual_dice_cp.csv")
 
 # if QC_aug26 is NA, then get the value from visual column (previous QC)
 bnk_visual <- bnk_visual %>%
   mutate(QC = if_else(is.na(QC_aug26), visual_rating, QC_aug26)) %>%
   select(-visual_rating)
 
-bnk_dice_bbr <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/qc_metrics_rosmap_BBR.csv") %>%
+bnk_dice_bbr <- read_csv("analysis/qc_plots/BNK_BBRnoBBR_plot/qc_metrics_rosmap_BBR.csv") %>%
   mutate(sub_ses = str_c(sub_id, ses_id, sep = "_"))
 # discard duplicate sub_ses rows
 bnk_dice_bbr <- bnk_dice_bbr %>%
@@ -29,7 +29,7 @@ bnk_dice_bbr <- bnk_dice_bbr %>%
   select(sub_ses, dice) %>%
   rename(dice_bbr = dice)
 
-bnk_dice_nobbr <- read_csv("~/Desktop/BNK_BBRnoBBR_plot/onlybnk_dice_2605_noBBR.csv") %>%
+bnk_dice_nobbr <- read_csv("analysis/qc_plots/BNK_BBRnoBBR_plot/onlybnk_dice_2605_noBBR.csv") %>%
   rename(dice_nobbr = dice)
 
 BNK_dices <- bnk_visual %>%
@@ -108,10 +108,10 @@ scale_color_manual(
 
 # count of NA parcels per ID, bbr vs nobbr
 
-bbr_count <- read_tsv("~/Desktop/BNK_BBRnoBBR_plot/bbr_count_non-coverage_456parcels_priority.tsv") %>%
+bbr_count <- read_tsv("analysis/qc_plots/BNK_BBRnoBBR_plot/bbr_count_non-coverage_456parcels_priority.tsv") %>%
   rename(sub_ses = sub_ses, bbr_count = zero_count)
 
-nobbr_count <- read_tsv("~/Desktop/BNK_BBRnoBBR_plot/nobbr_count_non-coverage_456parcels_priority.tsv") %>%
+nobbr_count <- read_tsv("analysis/qc_plots/BNK_BBRnoBBR_plot/nobbr_count_non-coverage_456parcels_priority.tsv") %>%
   rename(sub_ses = sub_ses, nobbr_count = zero_count)
 
 counts <- bbr_count %>%
@@ -166,10 +166,10 @@ ggplot(counts, aes(x = version, y = count)) +
 
 # avg coverage per ID, bbr vs nobbr
 
-avg_bbr <- read_tsv("~/Desktop/BNK_BBRnoBBR_plot/bbr_mean_coverage_456parcels_priority.tsv") %>%
+avg_bbr <- read_tsv("analysis/qc_plots/BNK_BBRnoBBR_plot/bbr_mean_coverage_456parcels_priority.tsv") %>%
   rename(sub_ses = sub_ses, bbr_avg = mean_coverage_percent)
 
-avg_nobbr <- read_tsv("~/Desktop/BNK_BBRnoBBR_plot/nobbr_mean_coverage_456parcels_priority.tsv") %>%
+avg_nobbr <- read_tsv("analysis/qc_plots/BNK_BBRnoBBR_plot/nobbr_mean_coverage_456parcels_priority.tsv") %>%
   rename(sub_ses = sub_ses, nobbr_avg = mean_coverage_percent)
 
 average <- avg_bbr %>%

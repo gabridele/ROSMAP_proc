@@ -1,0 +1,25 @@
+# Packages attached directly by scripts in this folder.
+# Versions should be frozen from the environment used for final publication results.
+broom
+dplyr
+emmeans
+ggeffects
+ggplot2
+ggpubr
+htmlwidgets
+lme4
+lmerTest
+lubridate
+magrittr
+patchwork
+plotly
+purrr
+readr
+readxl
+reticulate
+stringr
+svglite
+tibble
+tidyr
+tidyverse
+visreg

@@ -1,0 +1,5 @@
+name,path
+BNK,avg_fc_bnk_matrix.npy
+UC,avg_fc_uc_matrix.npy
+MG,avg_fc_mg_matrix.npy
+RIRC,avg_fc_rirc_matrix.npy
