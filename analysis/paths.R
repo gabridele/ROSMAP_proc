@@ -120,3 +120,22 @@ SCHAEFER4S456_ATLAS_TSV <- Sys.getenv(
     "atlas-4S456Parcels_dseg.tsv"
   )
 )
+
+GRADIENT_FC_SHEET <- Sys.getenv(
+  "ROSMAP_GRADIENT_FC_SHEET",
+  unset = file.path(
+    ANALYSIS_DIR,
+    "gradients",
+    "gradient_fc_sheet.csv"
+  )
+)
+
+MARGULIES_GRADIENTS_400 <- Sys.getenv(
+  "ROSMAP_MARGULIES_GRADIENTS_400",
+  unset = file.path(
+    ANALYSIS_DIR,
+    "gradients",
+    "marg",
+    "volumetric_marg_customgroup_400.csv"
+  )
+)
